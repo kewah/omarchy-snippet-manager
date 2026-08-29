@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Merge the Snippets Omarchy menu row and Hyprland bind into user config files.
+# Does not enable the plugin and never writes /usr/share/omarchy/.
+#
+#   bin/snippet-install \
+#     --menu-file "$HOME/.config/omarchy/extensions/omarchy-menu.jsonc" \
+#     --bind-file "$HOME/.config/hypr/bindings.lua"
+#
+# Local enable, after a directory symlink at
+# ~/.config/omarchy/plugins/kewah.snippet-manager/:
+#   omarchy plugin validate .
+#   omarchy-shell shell rescanPlugins
+#   omarchy plugin enable kewah.snippet-manager
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+readonly EXIT_USAGE=2
+readonly EXIT_IO=6
+readonly ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+readonly MERGER="$ROOT_DIR/lib/OmarchyInstall.js"
+
+die() {
+  local status="$1"
+  local message="$2"
+  printf '%s\n' "$message" >&2
+  exit "$status"
+}
+
+usage() {
+  cat <<'EOF'
+Usage: snippet-install --menu-file PATH --bind-file PATH
+
+Inserts trigger.snippets and the SUPER + CTRL + M bind if missing.
+Re-running is a no-op. Existing menu keys and binds are kept.
+
+Example:
+  bin/snippet-install \
+    --menu-file "$HOME/.config/omarchy/extensions/omarchy-menu.jsonc" \
+    --bind-file "$HOME/.config/hypr/bindings.lua"
+
+Does not call omarchy plugin enable. Does not write /usr/share/omarchy/.
+After placing this checkout at ~/.config/omarchy/plugins/kewah.snippet-manager/
+(directory symlink allowed):
+  omarchy plugin validate .
+  omarchy-shell shell rescanPlugins
+  omarchy plugin enable kewah.snippet-manager
+EOF
+}
+
+is_packaged_omarchy_path() {
+  local given="$1"
+  [[ $given == /usr/share/omarchy || $given == /usr/share/omarchy/* ]] && return 0
+  if [[ -e $given || -L $given ]]; then
+    local resolved
+    resolved=$(readlink -f "$given")
+    [[ $resolved == /usr/share/omarchy || $resolved == /usr/share/omarchy/* ]] && return 0
+  fi
+  return 1
+}
+
+merge_file() {
+  local mode="$1"
+  local file="$2"
+  local tmp
+
+  mkdir -p "$(dirname "$file")"
+  tmp=$(mktemp "$file.XXXXXX")
+  if [[ -f $file ]]; then
+    if ! node "$MERGER" "$mode" <"$file" >"$tmp"; then
+      rm -f "$tmp"
+      die "$EXIT_IO" "Unable to merge install fragment"
+    fi
+  else
+    if ! node "$MERGER" "$mode" </dev/null >"$tmp"; then
+      rm -f "$tmp"
+      die "$EXIT_IO" "Unable to merge install fragment"
+    fi
+  fi
+  mv "$tmp" "$file"
+}
+
+menu_file=""
+bind_file=""
+
+while (($# > 0)); do
+  case "$1" in
+    --menu-file)
+      menu_file="${2:-}"
+      [[ -n $menu_file ]] || die "$EXIT_USAGE" "Missing --menu-file path"
+      shift 2
+      ;;
+    --bind-file)
+      bind_file="${2:-}"
+      [[ -n $bind_file ]] || die "$EXIT_USAGE" "Missing --bind-file path"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "$EXIT_USAGE" "Unknown argument"
+      ;;
+  esac
+done
+
+[[ -n $menu_file || -n $bind_file ]] || {
+  usage >&2
+  exit "$EXIT_USAGE"
+}
+
+command -v node >/dev/null 2>&1 || die "$EXIT_IO" "Unable to merge install fragment"
+[[ -f $MERGER ]] || die "$EXIT_IO" "Unable to merge install fragment"
+
+if [[ -n $menu_file ]] && is_packaged_omarchy_path "$menu_file"; then
+  die "$EXIT_IO" "Refusing to write packaged Omarchy files"
+fi
+if [[ -n $bind_file ]] && is_packaged_omarchy_path "$bind_file"; then
+  die "$EXIT_IO" "Refusing to write packaged Omarchy files"
+fi
+
+[[ -n $menu_file ]] && merge_file merge-menu "$menu_file"
+[[ -n $bind_file ]] && merge_file merge-bind "$bind_file"

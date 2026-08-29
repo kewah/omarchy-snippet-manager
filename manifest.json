@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "kewah.snippet-manager",
+  "name": "Snippets",
+  "version": "1.0.0",
+  "author": "kewah",
+  "description": "Search, create, edit, copy, and paste personal plain-text snippets",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Snippets.qml"
+  }
+}

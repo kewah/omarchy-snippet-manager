@@ -1,0 +1,7 @@
+{
+  "trigger.snippets": {
+    "icon": "",
+    "label": "Snippets",
+    "action": "omarchy-shell shell toggle kewah.snippet-manager"
+  }
+}
