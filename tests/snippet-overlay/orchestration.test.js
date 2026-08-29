@@ -74,18 +74,28 @@ test("processCommand builds a fixed read argv without catalog content", () => {
 
 test("createIdEvent accepts only a kernel UUID v4 and canonical timestamp", () => {
   assert.deepEqual(
-    OverlayModel.createIdEvent(0, ID + "\n", TIMESTAMP),
-    { type: "CREATE_ID_GENERATED", id: ID, now: TIMESTAMP }
+    OverlayModel.createIdEvent(0, ID + "\n", TIMESTAMP, 11),
+    { type: "CREATE_ID_GENERATED", id: ID, now: TIMESTAMP, operationId: 11 }
   )
-  assert.deepEqual(OverlayModel.createIdEvent(1, ID, TIMESTAMP), { type: "CREATE_ID_FAILED" })
-  assert.deepEqual(OverlayModel.createIdEvent(0, "not-a-uuid", TIMESTAMP), { type: "CREATE_ID_FAILED" })
-  assert.deepEqual(OverlayModel.createIdEvent(0, ID, "not-a-time"), { type: "CREATE_ID_FAILED" })
+  assert.deepEqual(OverlayModel.createIdEvent(1, ID, TIMESTAMP, 11), { type: "CREATE_ID_FAILED", operationId: 11 })
+  assert.deepEqual(OverlayModel.createIdEvent(0, "not-a-uuid", TIMESTAMP, 11), { type: "CREATE_ID_FAILED", operationId: 11 })
+  assert.deepEqual(OverlayModel.createIdEvent(0, ID, "not-a-time", 11), { type: "CREATE_ID_FAILED", operationId: 11 })
+})
+
+test("reconcileReadEvent preserves operation identity without leaking output", () => {
+  const succeeded = OverlayModel.reconcileReadEvent(0, JSON.stringify(validCatalog()), 91, SnippetCatalog)
+  const failed = OverlayModel.reconcileReadEvent(6, "private output", 91, SnippetCatalog)
+
+  assert.equal(succeeded.type, "RECONCILE_SUCCEEDED")
+  assert.equal(succeeded.operationId, 91)
+  assert.deepEqual(succeeded.catalog, validCatalog())
+  assert.deepEqual(failed, { type: "RECONCILE_FAILED", operationId: 91, code: "IO_ERROR" })
 })
 
 test("storeWriteEvent exposes only success or a fixed write failure", () => {
-  assert.deepEqual(OverlayModel.storeWriteEvent(0), { type: "WRITE_SUCCEEDED" })
-  assert.deepEqual(OverlayModel.storeWriteEvent(3, "private stderr"), { type: "WRITE_FAILED" })
-  assert.deepEqual(OverlayModel.storeWriteEvent(6, "private stderr"), { type: "WRITE_FAILED" })
+  assert.deepEqual(OverlayModel.storeWriteEvent(0, 12), { type: "WRITE_SUCCEEDED", operationId: 12 })
+  assert.deepEqual(OverlayModel.storeWriteEvent(3, 12, "private stderr"), { type: "WRITE_FAILED", operationId: 12 })
+  assert.deepEqual(OverlayModel.storeWriteEvent(6, 12, "private stderr"), { type: "WRITE_FAILED", operationId: 12 })
 })
 
 test("SELECT_INDEX changes selection by stable result ID and bounds input", () => {

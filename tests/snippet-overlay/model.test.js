@@ -50,7 +50,9 @@ test("initialState starts closed without transient catalog or selection", () => 
     returnSearch: null,
     pendingIntent: null,
     targetId: null,
-    confirmAction: ""
+    confirmAction: "",
+    operationId: 0,
+    reconcileStatus: ""
   })
 })
 
@@ -236,6 +238,23 @@ test("previewText creates bounded single-line plain text without splitting Unico
   assert.equal(short, "<b>plain data</b>")
 })
 
+test("previewText keeps ZWJ emoji sequences as one unit", () => {
+  const family = "👨‍👩‍👧‍👦 extra"
+  const preview = OverlayModel.previewText(family, 2)
+
+  assert.equal(preview, "👨‍👩‍👧‍👦…")
+  assert.equal(preview.includes("👨‍…"), false)
+  assert.equal(preview.includes("👨…"), false)
+})
+
+test("fittedSize clamps to available space and never returns a non-positive size", () => {
+  assert.equal(OverlayModel.fittedSize(875, 800), 800)
+  assert.equal(OverlayModel.fittedSize(875, 1000), 875)
+  assert.equal(OverlayModel.fittedSize(875, 200), 200)
+  assert.equal(OverlayModel.fittedSize(875, -20), 1)
+  assert.equal(OverlayModel.fittedSize("wide", "400"), 400)
+})
+
 test("OPEN_CREATE starts an empty draft and cancel restores query and selection", () => {
   const searched = transition(loaded([snippet(1), snippet(2)]), {
     type: "SET_QUERY",
@@ -286,7 +305,7 @@ test("SUBMIT_CREATE suppresses duplicates while requesting one kernel identity",
 
   assert.equal(submitted.state.busy, true)
   assert.equal(submitted.state.pendingIntent.kind, "create")
-  assert.deepEqual(submitted.effects, [{ type: "GENERATE_CREATE_ID" }])
+  assert.deepEqual(submitted.effects, [{ type: "GENERATE_CREATE_ID", operationId: 1 }])
   assert.deepEqual(
     OverlayModel.processCommand(submitted.effects[0], "/store"),
     ["cat", "/proc/sys/kernel/random/uuid"])
@@ -387,11 +406,14 @@ test("WRITE_FAILED preserves the create draft and does not commit pending catalo
   const failed = transition(state, { type: "WRITE_FAILED", detail: "Private content" })
 
   assert.equal(failed.state.mode, "create")
-  assert.equal(failed.state.busy, false)
+  assert.equal(failed.state.busy, true)
+  assert.equal(failed.state.reconcileStatus, "loading")
   assert.equal(failed.state.draft.title, "Private title")
   assert.equal(failed.state.catalog.snippets.length, 0)
-  assert.equal(failed.state.errorMessage, "Unable to save snippet")
+  assert.equal(failed.state.errorMessage, "Unable to confirm snippet save")
   assert.equal(failed.state.errorMessage.includes("Private"), false)
+  assert.equal(failed.effects[0].type, "READ_STORE")
+  assert.equal(failed.effects[0].purpose, "RECONCILE")
 })
 
 test("OPEN_EDIT loads the selected stable ID and cancel restores search", () => {
@@ -585,9 +607,251 @@ test("failed delete retains confirmation intent and safe error", () => {
   const failed = transition(state, { type: "WRITE_FAILED", detail: "private snippet" })
 
   assert.equal(failed.state.mode, "delete-confirm")
-  assert.equal(failed.state.busy, false)
+  assert.equal(failed.state.busy, true)
+  assert.equal(failed.state.reconcileStatus, "loading")
   assert.equal(failed.state.catalog.snippets.length, 1)
   assert.equal(failed.state.confirmAction, "delete")
-  assert.equal(failed.state.errorMessage, "Unable to save snippet")
+  assert.equal(failed.state.errorMessage, "Unable to confirm snippet save")
   assert.equal(failed.state.errorMessage.includes("private"), false)
+})
+
+test("exact reloaded create result resolves an unknown write as success", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Created" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE", operationId: 41 }).state
+  state = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    operationId: 41,
+    id: ID_ONE,
+    now: CREATED_AT
+  }).state
+  const intendedCatalog = state.pendingIntent.nextCatalog
+  state = transition(state, { type: "WRITE_FAILED", operationId: 41 }).state
+
+  const reconciled = transition(state, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 41,
+    catalog: intendedCatalog
+  })
+
+  assert.equal(reconciled.state.mode, "search")
+  assert.equal(reconciled.state.selectedId, ID_ONE)
+  assert.equal(reconciled.state.catalog.snippets.length, 1)
+  assert.equal(reconciled.state.pendingIntent, null)
+})
+
+test("absent reloaded create retries with the same ID and timestamp", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Created" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE", operationId: 42 }).state
+  state = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    operationId: 42,
+    id: ID_ONE,
+    now: CREATED_AT
+  }).state
+  state = transition(state, { type: "WRITE_FAILED", operationId: 42 }).state
+  state = transition(state, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 42,
+    catalog: { schemaVersion: 1, snippets: [] }
+  }).state
+
+  const retried = transition(state, { type: "SUBMIT_CREATE", operationId: 43 })
+  const retriedRecord = JSON.parse(retried.effects[0].payload).snippets[0]
+
+  assert.equal(retried.effects[0].type, "WRITE_STORE")
+  assert.equal(retried.effects.some((effect) => effect.type === "GENERATE_CREATE_ID"), false)
+  assert.equal(retriedRecord.id, ID_ONE)
+  assert.equal(retriedRecord.createdAt, CREATED_AT)
+  assert.equal(retried.state.pendingIntent.operationId, 43)
+})
+
+test("conflicting reloaded create identity requires a newly generated ID", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Created" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE", operationId: 44 }).state
+  state = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    operationId: 44,
+    id: ID_ONE,
+    now: CREATED_AT
+  }).state
+  state = transition(state, { type: "WRITE_FAILED", operationId: 44 }).state
+  state = transition(state, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 44,
+    catalog: { schemaVersion: 1, snippets: [snippet(9, { id: ID_ONE, title: "Collision" })] }
+  }).state
+
+  const resubmitted = transition(state, { type: "SUBMIT_CREATE", operationId: 45 })
+
+  assert.equal(state.pendingIntent, null)
+  assert.equal(state.errorMessage, "Snippet identity changed; retry with a new identity")
+  assert.deepEqual(resubmitted.effects, [{ type: "GENERATE_CREATE_ID", operationId: 45 }])
+})
+
+test("edit reconciliation accepts intended values or retains draft against reloaded data", () => {
+  let prepared = transition(loaded([snippet(1)]), { type: "OPEN_EDIT" }).state
+  prepared = transition(prepared, { type: "UPDATE_DRAFT", field: "title", value: "Edited" }).state
+  prepared = transition(prepared, {
+    type: "SUBMIT_EDIT",
+    operationId: 51,
+    now: "2026-08-29T13:00:00.000Z"
+  }).state
+  const intended = prepared.pendingIntent.nextCatalog
+  let failed = transition(prepared, { type: "WRITE_FAILED", operationId: 51 }).state
+
+  const applied = transition(failed, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 51,
+    catalog: intended
+  })
+  const notApplied = transition(failed, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 51,
+    catalog: { schemaVersion: 1, snippets: [snippet(1, { title: "External value" })] }
+  })
+
+  assert.equal(applied.state.mode, "search")
+  assert.equal(applied.state.catalog.snippets[0].title, "Edited")
+  assert.equal(notApplied.state.mode, "edit")
+  assert.equal(notApplied.state.catalog.snippets[0].title, "External value")
+  assert.equal(notApplied.state.draft.title, "Edited")
+  assert.equal(notApplied.state.busy, false)
+  assert.equal(notApplied.state.reconcileStatus, "")
+})
+
+test("delete reconciliation treats absence as success and presence as retryable", () => {
+  let prepared = transition(loaded([snippet(1), snippet(2)]), { type: "OPEN_DELETE" }).state
+  prepared = transition(prepared, { type: "MOVE_CONFIRM" }).state
+  prepared = transition(prepared, { type: "CONFIRM_DELETE", operationId: 61 }).state
+  let failed = transition(prepared, { type: "WRITE_FAILED", operationId: 61 }).state
+
+  const absent = transition(failed, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 61,
+    catalog: prepared.pendingIntent.nextCatalog
+  })
+  const present = transition(failed, {
+    type: "RECONCILE_SUCCEEDED",
+    operationId: 61,
+    catalog: { schemaVersion: 1, snippets: [snippet(1), snippet(2)] }
+  })
+
+  assert.equal(absent.state.mode, "search")
+  assert.equal(absent.state.catalog.snippets.length, 1)
+  assert.equal(present.state.mode, "delete-confirm")
+  assert.equal(present.state.busy, false)
+  assert.equal(present.state.confirmAction, "delete")
+  assert.equal(present.state.catalog.snippets.length, 2)
+})
+
+test("reconciliation reload failure blocks retry but retains intent until cancel", () => {
+  let state = transition(loaded([snippet(1)]), { type: "OPEN_EDIT" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Retained draft" }).state
+  state = transition(state, {
+    type: "SUBMIT_EDIT",
+    operationId: 71,
+    now: "2026-08-29T13:00:00.000Z"
+  }).state
+  state = transition(state, { type: "WRITE_FAILED", operationId: 71 }).state
+
+  const blocked = transition(state, {
+    type: "RECONCILE_FAILED",
+    operationId: 71,
+    code: "IO_ERROR"
+  })
+  const retry = transition(blocked.state, {
+    type: "SUBMIT_EDIT",
+    operationId: 72,
+    now: "2026-08-29T14:00:00.000Z"
+  })
+  const canceled = transition(blocked.state, { type: "CANCEL_EDITOR" })
+
+  assert.equal(blocked.state.reconcileStatus, "blocked")
+  assert.equal(blocked.state.draft.title, "Retained draft")
+  assert.equal(blocked.state.pendingIntent.operationId, 71)
+  assert.equal(blocked.state.errorMessage, "Unable to reload snippet catalog")
+  assert.deepEqual(retry, { state: blocked.state, effects: [] })
+  assert.equal(canceled.state.mode, "load-error")
+  assert.equal(canceled.state.catalog, null)
+})
+
+test("searchStatus distinguishes empty catalog, no matches, and results", () => {
+  const empty = loaded([])
+  const queriedEmpty = transition(empty, { type: "SET_QUERY", query: "support" }).state
+  const unmatched = transition(loaded([snippet(1)]), { type: "SET_QUERY", query: "missing" }).state
+  const matched = loaded([snippet(1)])
+
+  assert.equal(OverlayModel.searchStatus(empty), "empty")
+  assert.equal(OverlayModel.searchStatus(queriedEmpty), "empty")
+  assert.equal(OverlayModel.searchStatus(unmatched), "no-results")
+  assert.equal(OverlayModel.searchStatus(matched), "results")
+  assert.equal(OverlayModel.searchStatus(OverlayModel.openedState()), "")
+  assert.equal(OverlayModel.searchStatus(transition(matched, { type: "OPEN_DELETE" }).state), "results")
+})
+
+test("usesSplitDetail keeps two panes only when the surface is wide enough", () => {
+  assert.equal(OverlayModel.usesSplitDetail(560, 560), true)
+  assert.equal(OverlayModel.usesSplitDetail(559, 560), false)
+  assert.equal(OverlayModel.usesSplitDetail("640"), true)
+  assert.equal(OverlayModel.usesSplitDetail("narrow", 560), false)
+})
+
+test("shortcutHints name every approved search action", () => {
+  const hints = OverlayModel.shortcutHints()
+
+  assert.match(hints, /Ctrl\+N/)
+  assert.match(hints, /Ctrl\+P/)
+  assert.match(hints, /Ctrl\+Shift\+N/)
+  assert.match(hints, /Ctrl\+E/)
+  assert.match(hints, /Ctrl\+X/)
+  assert.match(hints, /Enter/)
+  assert.match(hints, /Ctrl\+Enter/)
+  assert.match(hints, /Create/)
+  assert.match(hints, /Edit/)
+  assert.match(hints, /Delete/)
+  assert.match(hints, /Paste/)
+  assert.match(hints, /Copy/)
+})
+
+test("resultAccessibleName uses title and keywords without snippet content", () => {
+  const named = OverlayModel.resultAccessibleName({
+    title: "Support email",
+    keywords: ["help,desk", "support"],
+    content: "secret-token"
+  })
+  const untitled = OverlayModel.resultAccessibleName(null)
+
+  assert.equal(named, "Support email — help,desk · support")
+  assert.equal(named.includes("secret-token"), false)
+  assert.equal(untitled, "")
+})
+
+test("stale identity and write completions cannot mutate a newer intent", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Current" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE", operationId: 81 }).state
+
+  const staleIdentity = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    operationId: 80,
+    id: ID_ONE,
+    now: CREATED_AT
+  })
+  const current = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    operationId: 81,
+    id: ID_ONE,
+    now: CREATED_AT
+  }).state
+  const staleWrite = transition(current, { type: "WRITE_SUCCEEDED", operationId: 80 })
+
+  assert.deepEqual(staleIdentity, { state, effects: [] })
+  assert.deepEqual(staleWrite, { state: current, effects: [] })
 })

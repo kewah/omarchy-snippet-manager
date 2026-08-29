@@ -19,11 +19,18 @@ Item {
   property bool readExited: false
   property bool readStreamFinished: false
   property int readExitCode: 6
+  property string readPurpose: "LOAD"
+  property int readOperationId: 0
+  property int readGeneration: 0
+  property int viewGeneration: 0
   property string idOutput: ""
   property bool idExited: false
   property bool idStreamFinished: false
   property int idExitCode: 1
+  property int idOperationId: 0
   property string writePayload: ""
+  property int writeOperationId: 0
+  property int operationSerial: 0
 
   readonly property string sourceDir: root.manifest && root.manifest.__sourceDir
     ? String(root.manifest.__sourceDir) : ""
@@ -39,18 +46,20 @@ Item {
   property color selectedText: Color.menu.selectedText
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
-  property int cardWidth: Math.min(Style.space(875), panel.width - Style.gapsOut * 2)
-  property int cardHeight: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
+  property int cardWidth: OverlayModel.fittedSize(Style.space(875), panel.width - Style.gapsOut * 2)
+  property int cardHeight: OverlayModel.fittedSize(Style.space(600), panel.height - Style.gapsOut * 2)
 
   signal transferRequested(var payload)
 
   function open(payloadJson) {
+    root.viewGeneration += 1
     root.opened = true
     root.applyEvent({ type: "OPEN" })
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
+    root.viewGeneration += 1
     root.opened = false
     root.overlayState = OverlayModel.initialState()
   }
@@ -65,6 +74,11 @@ Item {
   function toggle() {
     if (root.opened) root.dismiss()
     else root.open("{}")
+  }
+
+  function nextOperationId() {
+    root.operationSerial += 1
+    return root.operationSerial
   }
 
   function applyEvent(event) {
@@ -95,6 +109,9 @@ Item {
     root.readExited = false
     root.readStreamFinished = false
     root.readExitCode = 6
+    root.readPurpose = effect.purpose || "LOAD"
+    root.readOperationId = Number(effect.operationId) || 0
+    root.readGeneration = root.viewGeneration
     readProc.command = command
     readProc.running = true
   }
@@ -102,10 +119,16 @@ Item {
   function finishReadIfReady() {
     if (!root.readExited || !root.readStreamFinished) return
 
-    var event = OverlayModel.storeReadEvent(root.readExitCode, root.readOutput, SnippetCatalog)
+    var generation = root.readGeneration
+    var event = root.readPurpose === "RECONCILE"
+      ? OverlayModel.reconcileReadEvent(root.readExitCode, root.readOutput, root.readOperationId, SnippetCatalog)
+      : OverlayModel.storeReadEvent(root.readExitCode, root.readOutput, SnippetCatalog)
     root.readExited = false
     root.readStreamFinished = false
-    if (root.opened) root.applyEvent(event)
+    root.readPurpose = "LOAD"
+    root.readOperationId = 0
+    root.readGeneration = 0
+    if (root.opened && generation === root.viewGeneration) root.applyEvent(event)
   }
 
   function startIdGeneration(effect) {
@@ -119,6 +142,7 @@ Item {
     root.idExited = false
     root.idStreamFinished = false
     root.idExitCode = 1
+    root.idOperationId = Number(effect.operationId) || 0
     idProc.command = command
     idProc.running = true
   }
@@ -126,7 +150,11 @@ Item {
   function finishIdIfReady() {
     if (!root.idExited || !root.idStreamFinished) return
 
-    var event = OverlayModel.createIdEvent(root.idExitCode, root.idOutput, new Date().toISOString())
+    var event = OverlayModel.createIdEvent(
+      root.idExitCode,
+      root.idOutput,
+      new Date().toISOString(),
+      root.idOperationId)
     root.idExited = false
     root.idStreamFinished = false
     if (root.opened) root.applyEvent(event)
@@ -140,6 +168,7 @@ Item {
     }
 
     root.writePayload = effect.payload
+    root.writeOperationId = Number(effect.operationId) || 0
     writeProc.stdinEnabled = true
     writeProc.command = command
     writeProc.running = true
@@ -157,7 +186,9 @@ Item {
   function handleKey(event) {
     if (root.overlayState.mode === "delete-confirm") {
       if (event.key === Qt.Key_Escape) root.applyEvent({ type: "CANCEL_DELETE" })
-      else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.applyEvent({ type: "CONFIRM_DELETE" })
+      else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+        root.applyEvent({ type: "CONFIRM_DELETE", operationId: root.nextOperationId() })
+      }
       else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right
           || event.key === Qt.Key_Up || event.key === Qt.Key_Down
           || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
@@ -189,7 +220,16 @@ Item {
       root.applyEvent({ type: "ESCAPE" })
       event.accepted = true
     } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
-      root.applyEvent({ type: "OPEN_CREATE" })
+      if (event.modifiers & Qt.ShiftModifier) root.applyEvent({ type: "OPEN_CREATE" })
+      else {
+        root.applyEvent({ type: "MOVE_SELECTION", delta: 1 })
+        searchView.disarmPointer()
+      }
+      event.accepted = true
+    } else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)
+        && !(event.modifiers & Qt.ShiftModifier)) {
+      root.applyEvent({ type: "MOVE_SELECTION", delta: -1 })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_E && (event.modifiers & Qt.ControlModifier)) {
       root.applyEvent({ type: "OPEN_EDIT" })
@@ -202,21 +242,27 @@ Item {
       event.accepted = true
     } else if (event.key === Qt.Key_Up) {
       root.applyEvent({ type: "MOVE_SELECTION", delta: -1 })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_Down) {
       root.applyEvent({ type: "MOVE_SELECTION", delta: 1 })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_PageUp) {
       root.applyEvent({ type: "PAGE_SELECTION", direction: -1, visibleCount: searchView.visibleRowCount })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_PageDown) {
       root.applyEvent({ type: "PAGE_SELECTION", direction: 1, visibleCount: searchView.visibleRowCount })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_Home) {
       root.applyEvent({ type: "SELECT_FIRST" })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_End) {
       root.applyEvent({ type: "SELECT_LAST" })
+      searchView.disarmPointer()
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
       var kind = (event.modifiers & Qt.ControlModifier) ? "COPY" : "PASTE"
@@ -287,7 +333,8 @@ Item {
     onExited: function(exitCode, exitStatus) {
       if (!root.opened) return
       var status = exitStatus === 0 ? exitCode : 6
-      root.applyEvent(OverlayModel.storeWriteEvent(status))
+      root.applyEvent(OverlayModel.storeWriteEvent(status, root.writeOperationId))
+      root.writeOperationId = 0
     }
   }
 
@@ -331,6 +378,17 @@ Item {
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) { root.handleKey(event) }
+        Accessible.role: Accessible.EditableText
+        Accessible.searchEdit: true
+        Accessible.name: "Search snippets"
+        Accessible.description: root.overlayState.query || "Type to search snippets"
+        Accessible.focusable: root.overlayState.mode === "search"
+          || root.overlayState.mode === "loading"
+          || root.overlayState.mode === "load-error"
+        Accessible.focused: activeFocus && Accessible.focusable
+        Accessible.ignored: root.overlayState.mode === "delete-confirm"
+          || root.overlayState.mode === "create"
+          || root.overlayState.mode === "edit"
       }
 
       SnippetSearchView {
@@ -346,6 +404,11 @@ Item {
         query: root.overlayState.query
         results: root.overlayState.results
         selectedId: root.overlayState.selectedId || ""
+        searchStatus: OverlayModel.searchStatus(root.overlayState)
+        assistiveHidden: root.overlayState.mode === "delete-confirm"
+        keyboardActive: keyCatcher.activeFocus && (root.overlayState.mode === "search"
+          || root.overlayState.mode === "loading"
+          || root.overlayState.mode === "load-error")
         errorMessage: root.overlayState.errorMessage
         background: root.background
         foreground: root.foreground
@@ -359,7 +422,14 @@ Item {
           root.applyEvent({ type: "SELECT_INDEX", index: index })
           root.applyEvent({ type: "REQUEST_TRANSFER", kind: "PASTE" })
         }
-        onRetryRequested: root.applyEvent({ type: "RETRY_LOAD" })
+        onCreateRequested: {
+          root.applyEvent({ type: "OPEN_CREATE" })
+          Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        }
+        onRetryRequested: {
+          root.applyEvent({ type: "RETRY_LOAD" })
+          Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        }
         onCloseRequested: root.dismiss()
       }
 
@@ -372,6 +442,7 @@ Item {
         selectedAction: root.overlayState.confirmAction
         errorMessage: root.overlayState.errorMessage
         busy: root.overlayState.busy
+        blocked: root.overlayState.reconcileStatus === "blocked"
         background: root.background
         foreground: root.foreground
         scrim: root.scrim
@@ -387,7 +458,7 @@ Item {
         }
         onDeleteRequested: {
           if (root.overlayState.confirmAction !== "delete") root.applyEvent({ type: "MOVE_CONFIRM" })
-          root.applyEvent({ type: "CONFIRM_DELETE" })
+          root.applyEvent({ type: "CONFIRM_DELETE", operationId: root.nextOperationId() })
         }
       }
 
@@ -405,6 +476,7 @@ Item {
         focusField: root.overlayState.focusField
         errorMessage: root.overlayState.errorMessage
         busy: root.overlayState.busy
+        blocked: root.overlayState.reconcileStatus === "blocked"
         foreground: root.foreground
         background: root.background
         onFieldChanged: function(field, value) {
@@ -421,9 +493,13 @@ Item {
         }
         onSaveRequested: {
           if (root.overlayState.mode === "edit") {
-            root.applyEvent({ type: "SUBMIT_EDIT", now: new Date().toISOString() })
+            root.applyEvent({
+            type: "SUBMIT_EDIT",
+            now: new Date().toISOString(),
+            operationId: root.nextOperationId()
+          })
           } else {
-            root.applyEvent({ type: "SUBMIT_CREATE" })
+            root.applyEvent({ type: "SUBMIT_CREATE", operationId: root.nextOperationId() })
           }
         }
         onCancelRequested: {
