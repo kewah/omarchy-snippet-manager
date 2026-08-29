@@ -49,7 +49,8 @@ test("initialState starts closed without transient catalog or selection", () => 
     focusField: "",
     returnSearch: null,
     pendingIntent: null,
-    targetId: null
+    targetId: null,
+    confirmAction: ""
   })
 })
 
@@ -479,4 +480,114 @@ test("edit submission and write completion are duplicate-safe", () => {
   assert.equal(saved.state.catalog.snippets[0].title, "Changed")
   assert.equal(saved.state.catalog.snippets[0].createdAt, CREATED_AT)
   assert.equal(saved.state.catalog.snippets[0].updatedAt, "2026-08-29T13:00:00.000Z")
+})
+
+test("OPEN_DELETE defaults to Cancel and preserves the selected title", () => {
+  const source = loaded([snippet(1, { title: "Delete me" })])
+
+  const opened = transition(source, { type: "OPEN_DELETE" })
+
+  assert.equal(opened.state.mode, "delete-confirm")
+  assert.equal(opened.state.targetId, snippet(1).id)
+  assert.equal(opened.state.confirmAction, "cancel")
+  assert.equal(opened.state.results[0].title, "Delete me")
+  assert.deepEqual(opened.effects, [])
+  assert.deepEqual(transition(loaded([]), { type: "OPEN_DELETE" }), { state: loaded([]), effects: [] })
+})
+
+test("confirmation movement toggles actions and Escape cancels without effects", () => {
+  const source = loaded([snippet(1)])
+  const opened = transition(source, { type: "OPEN_DELETE" }).state
+
+  const moved = transition(opened, { type: "MOVE_CONFIRM" })
+  const movedBack = transition(moved.state, { type: "MOVE_CONFIRM" })
+  const canceled = transition(moved.state, { type: "CANCEL_DELETE" })
+
+  assert.equal(moved.state.confirmAction, "delete")
+  assert.equal(movedBack.state.confirmAction, "cancel")
+  assert.equal(canceled.state.mode, "search")
+  assert.equal(canceled.state.selectedId, snippet(1).id)
+  assert.deepEqual(canceled.effects, [])
+})
+
+test("confirming the default Cancel action never deletes", () => {
+  const opened = transition(loaded([snippet(1)]), { type: "OPEN_DELETE" }).state
+  const result = transition(opened, { type: "CONFIRM_DELETE" })
+
+  assert.equal(result.state.mode, "search")
+  assert.equal(result.state.catalog.snippets.length, 1)
+  assert.deepEqual(result.effects, [])
+})
+
+test("confirmed Delete schedules canonical bytes without committing memory", () => {
+  let state = loaded([snippet(1), snippet(2)])
+  state = transition(state, { type: "SELECT_INDEX", index: 1 }).state
+  state = transition(state, { type: "OPEN_DELETE" }).state
+  state = transition(state, { type: "MOVE_CONFIRM" }).state
+
+  const prepared = transition(state, { type: "CONFIRM_DELETE" })
+  const duplicate = transition(prepared.state, { type: "CONFIRM_DELETE" })
+
+  assert.equal(prepared.state.busy, true)
+  assert.equal(prepared.state.catalog.snippets.length, 2)
+  assert.equal(prepared.state.pendingIntent.kind, "delete")
+  assert.equal(prepared.state.pendingIntent.id, state.targetId)
+  assert.equal(prepared.effects[0].type, "WRITE_STORE")
+  assert.equal(JSON.parse(prepared.effects[0].payload).snippets.length, 1)
+  assert.deepEqual(duplicate, { state: prepared.state, effects: [] })
+})
+
+test("successful delete preserves query and selects the same filtered index", () => {
+  let state = loaded([
+    snippet(1, { title: "Alpha target" }),
+    snippet(2, { title: "Beta target" }),
+    snippet(3, { title: "Gamma target" })
+  ])
+  state = transition(state, { type: "SET_QUERY", query: "target" }).state
+  state = transition(state, { type: "SELECT_INDEX", index: 1 }).state
+  const deletedId = state.selectedId
+  state = transition(state, { type: "OPEN_DELETE" }).state
+  state = transition(state, { type: "MOVE_CONFIRM" }).state
+  state = transition(state, { type: "CONFIRM_DELETE" }).state
+
+  const saved = transition(state, { type: "WRITE_SUCCEEDED" })
+
+  assert.equal(saved.state.mode, "search")
+  assert.equal(saved.state.query, "target")
+  assert.equal(saved.state.results.length, 2)
+  assert.equal(saved.state.results.some((record) => record.id === deletedId), false)
+  assert.equal(saved.state.selectedId, snippet(3).id)
+})
+
+test("deleting the last result selects its predecessor and deleting all clears selection", () => {
+  let two = loaded([snippet(1, { title: "Alpha" }), snippet(2, { title: "Beta" })])
+  two = transition(two, { type: "SELECT_LAST" }).state
+  two = transition(two, { type: "OPEN_DELETE" }).state
+  two = transition(two, { type: "MOVE_CONFIRM" }).state
+  two = transition(two, { type: "CONFIRM_DELETE" }).state
+  const oneLeft = transition(two, { type: "WRITE_SUCCEEDED" }).state
+
+  let one = transition(oneLeft, { type: "OPEN_DELETE" }).state
+  one = transition(one, { type: "MOVE_CONFIRM" }).state
+  one = transition(one, { type: "CONFIRM_DELETE" }).state
+  const empty = transition(one, { type: "WRITE_SUCCEEDED" }).state
+
+  assert.equal(oneLeft.selectedId, snippet(1).id)
+  assert.equal(empty.results.length, 0)
+  assert.equal(empty.selectedId, null)
+})
+
+test("failed delete retains confirmation intent and safe error", () => {
+  let state = transition(loaded([snippet(1)]), { type: "OPEN_DELETE" }).state
+  state = transition(state, { type: "MOVE_CONFIRM" }).state
+  state = transition(state, { type: "CONFIRM_DELETE" }).state
+
+  const failed = transition(state, { type: "WRITE_FAILED", detail: "private snippet" })
+
+  assert.equal(failed.state.mode, "delete-confirm")
+  assert.equal(failed.state.busy, false)
+  assert.equal(failed.state.catalog.snippets.length, 1)
+  assert.equal(failed.state.confirmAction, "delete")
+  assert.equal(failed.state.errorMessage, "Unable to save snippet")
+  assert.equal(failed.state.errorMessage.includes("private"), false)
 })
