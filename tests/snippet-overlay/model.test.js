@@ -5,6 +5,7 @@ const SnippetCatalog = require("../../lib/SnippetCatalog.js")
 const OverlayModel = require("../../lib/SnippetOverlayModel.js")
 
 const CREATED_AT = "2026-08-29T12:00:00.000Z"
+const ID_ONE = "550e8400-e29b-41d4-a716-446655440000"
 
 function snippet(index, overrides = {}) {
   return {
@@ -42,7 +43,12 @@ test("initialState starts closed without transient catalog or selection", () => 
     results: [],
     selectedId: null,
     errorMessage: "",
-    busy: false
+    busy: false,
+    draft: null,
+    fieldErrors: {},
+    focusField: "",
+    returnSearch: null,
+    pendingIntent: null
   })
 })
 
@@ -226,4 +232,162 @@ test("previewText creates bounded single-line plain text without splitting Unico
   assert.equal(Array.from(preview).length, 16)
   assert.equal(preview.includes("\n"), false)
   assert.equal(short, "<b>plain data</b>")
+})
+
+test("OPEN_CREATE starts an empty draft and cancel restores query and selection", () => {
+  const searched = transition(loaded([snippet(1), snippet(2)]), {
+    type: "SET_QUERY",
+    query: "content"
+  }).state
+  const selected = transition(searched, { type: "SELECT_INDEX", index: 1 }).state
+
+  const opened = transition(selected, { type: "OPEN_CREATE" })
+  const canceled = transition(opened.state, { type: "CANCEL_EDITOR" })
+
+  assert.equal(opened.state.mode, "create")
+  assert.deepEqual(opened.state.draft, { title: "", keywords: [], content: "" })
+  assert.deepEqual(opened.state.returnSearch, {
+    query: "content",
+    selectedId: selected.selectedId
+  })
+  assert.equal(opened.state.focusField, "title")
+  assert.equal(canceled.state.mode, "search")
+  assert.equal(canceled.state.query, "content")
+  assert.equal(canceled.state.selectedId, selected.selectedId)
+  assert.deepEqual(canceled.effects, [])
+})
+
+test("create drafts update fields and preserve individual delimiter-bearing keywords", () => {
+  const create = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  const original = structuredClone(create)
+
+  const titled = transition(create, { type: "UPDATE_DRAFT", field: "title", value: "Title" }).state
+  const content = transition(titled, { type: "UPDATE_DRAFT", field: "content", value: "Line 1\nLine 2 👋" }).state
+  const firstKeyword = transition(content, { type: "ADD_KEYWORD", value: "comma,value" }).state
+  const secondKeyword = transition(firstKeyword, { type: "ADD_KEYWORD", value: "second" }).state
+  const editedKeyword = transition(secondKeyword, { type: "UPDATE_KEYWORD", index: 1, value: "new\nvalue" }).state
+  const removedKeyword = transition(editedKeyword, { type: "REMOVE_KEYWORD", index: 0 }).state
+
+  assert.deepEqual(create, original)
+  assert.equal(removedKeyword.draft.title, "Title")
+  assert.equal(removedKeyword.draft.content, "Line 1\nLine 2 👋")
+  assert.deepEqual(removedKeyword.draft.keywords, ["new\nvalue"])
+})
+
+test("SUBMIT_CREATE suppresses duplicates while requesting one kernel identity", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Title" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Content" }).state
+
+  const submitted = transition(state, { type: "SUBMIT_CREATE" })
+  const duplicate = transition(submitted.state, { type: "SUBMIT_CREATE" })
+
+  assert.equal(submitted.state.busy, true)
+  assert.equal(submitted.state.pendingIntent.kind, "create")
+  assert.deepEqual(submitted.effects, [{ type: "GENERATE_CREATE_ID" }])
+  assert.deepEqual(
+    OverlayModel.processCommand(submitted.effects[0], "/store"),
+    ["cat", "/proc/sys/kernel/random/uuid"])
+  assert.deepEqual(duplicate, { state: submitted.state, effects: [] })
+})
+
+test("CREATE_ID_GENERATED returns field validation without scheduling a write", () => {
+  const create = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  const submitted = transition(create, { type: "SUBMIT_CREATE" }).state
+
+  const result = transition(submitted, {
+    type: "CREATE_ID_GENERATED",
+    id: ID_ONE,
+    now: CREATED_AT
+  })
+
+  assert.equal(result.state.mode, "create")
+  assert.equal(result.state.busy, false)
+  assert.equal(result.state.focusField, "title")
+  assert.equal(result.state.fieldErrors.title, "Title must contain between 1 and 120 characters")
+  assert.equal(result.state.pendingIntent, null)
+  assert.deepEqual(result.effects, [])
+})
+
+test("CREATE_ID_FAILED preserves the draft with a safe retryable error", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Private" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Private content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE" }).state
+
+  const failed = transition(state, { type: "CREATE_ID_FAILED", detail: "Private content" })
+
+  assert.equal(failed.state.busy, false)
+  assert.equal(failed.state.pendingIntent, null)
+  assert.equal(failed.state.draft.title, "Private")
+  assert.equal(failed.state.errorMessage, "Unable to create snippet")
+  assert.equal(failed.state.errorMessage.includes("Private content"), false)
+})
+
+test("valid create schedules canonical store bytes without committing memory", () => {
+  const source = loaded([])
+  let state = transition(source, { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "  New title  " }).state
+  state = transition(state, { type: "ADD_KEYWORD", value: " comma,value " }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Exact\r\ncontent 👋" }).state
+  state = transition(state, { type: "SUBMIT_CREATE" }).state
+
+  const prepared = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    id: ID_ONE,
+    now: CREATED_AT
+  })
+
+  assert.equal(prepared.state.catalog.snippets.length, 0)
+  assert.equal(prepared.state.busy, true)
+  assert.equal(prepared.effects.length, 1)
+  assert.equal(prepared.effects[0].type, "WRITE_STORE")
+  assert.equal(prepared.effects[0].payload.endsWith("\n"), true)
+  const parsed = JSON.parse(prepared.effects[0].payload)
+  assert.equal(parsed.snippets[0].title, "New title")
+  assert.deepEqual(parsed.snippets[0].keywords, ["comma,value"])
+  assert.equal(parsed.snippets[0].content, "Exact\r\ncontent 👋")
+  assert.deepEqual(OverlayModel.processCommand(prepared.effects[0], "/store"), ["/store", "write"])
+})
+
+test("WRITE_SUCCEEDED commits create and selects it with a cleared query", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "New" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE" }).state
+  state = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    id: ID_ONE,
+    now: CREATED_AT
+  }).state
+
+  const saved = transition(state, { type: "WRITE_SUCCEEDED" })
+
+  assert.equal(saved.state.mode, "search")
+  assert.equal(saved.state.query, "")
+  assert.equal(saved.state.selectedId, ID_ONE)
+  assert.equal(saved.state.catalog.snippets.length, 1)
+  assert.equal(saved.state.busy, false)
+  assert.equal(saved.state.pendingIntent, null)
+})
+
+test("WRITE_FAILED preserves the create draft and does not commit pending catalog", () => {
+  let state = transition(loaded([]), { type: "OPEN_CREATE" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Private title" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Private content" }).state
+  state = transition(state, { type: "SUBMIT_CREATE" }).state
+  state = transition(state, {
+    type: "CREATE_ID_GENERATED",
+    id: ID_ONE,
+    now: CREATED_AT
+  }).state
+
+  const failed = transition(state, { type: "WRITE_FAILED", detail: "Private content" })
+
+  assert.equal(failed.state.mode, "create")
+  assert.equal(failed.state.busy, false)
+  assert.equal(failed.state.draft.title, "Private title")
+  assert.equal(failed.state.catalog.snippets.length, 0)
+  assert.equal(failed.state.errorMessage, "Unable to save snippet")
+  assert.equal(failed.state.errorMessage.includes("Private"), false)
 })

@@ -72,6 +72,22 @@ test("processCommand builds a fixed read argv without catalog content", () => {
   assert.equal(OverlayModel.processCommand({ type: "READ_STORE" }, ""), null)
 })
 
+test("createIdEvent accepts only a kernel UUID v4 and canonical timestamp", () => {
+  assert.deepEqual(
+    OverlayModel.createIdEvent(0, ID + "\n", TIMESTAMP),
+    { type: "CREATE_ID_GENERATED", id: ID, now: TIMESTAMP }
+  )
+  assert.deepEqual(OverlayModel.createIdEvent(1, ID, TIMESTAMP), { type: "CREATE_ID_FAILED" })
+  assert.deepEqual(OverlayModel.createIdEvent(0, "not-a-uuid", TIMESTAMP), { type: "CREATE_ID_FAILED" })
+  assert.deepEqual(OverlayModel.createIdEvent(0, ID, "not-a-time"), { type: "CREATE_ID_FAILED" })
+})
+
+test("storeWriteEvent exposes only success or a fixed write failure", () => {
+  assert.deepEqual(OverlayModel.storeWriteEvent(0), { type: "WRITE_SUCCEEDED" })
+  assert.deepEqual(OverlayModel.storeWriteEvent(3, "private stderr"), { type: "WRITE_FAILED" })
+  assert.deepEqual(OverlayModel.storeWriteEvent(6, "private stderr"), { type: "WRITE_FAILED" })
+})
+
 test("SELECT_INDEX changes selection by stable result ID and bounds input", () => {
   const records = [validCatalog().snippets[0], {
     ...validCatalog().snippets[0],
