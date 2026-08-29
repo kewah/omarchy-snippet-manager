@@ -51,6 +51,8 @@ import QtQuick
 import "."
 
 ShellRoot {
+  property int phase: 0
+
   Snippets {
     id: snippets
     onTransferRequested: function(payload) {
@@ -58,8 +60,11 @@ ShellRoot {
           || payload.snippet.id !== "550e8400-e29b-41d4-a716-446655440000"
           || payload.snippet.content !== "Exact 👋\r\nmultiline\n") {
         console.error("SNIPPET_SMOKE_FAILURE invalid transfer payload")
+        Qt.quit()
+        return
       }
-      Qt.quit()
+      phase = 1
+      Qt.callLater(function() { snippets.open("{}") })
     }
   }
 
@@ -71,7 +76,15 @@ ShellRoot {
     onTriggered: {
       attempts += 1
       if (attempts === 1) snippets.open("{}")
-      if (snippets.overlayState.mode === "search") {
+      if (attempts > 100) {
+        console.error("SNIPPET_SMOKE_FAILURE overlay flow timed out")
+        Qt.quit()
+        return
+      }
+      if (snippets.overlayState.mode !== "search") return
+
+      if (phase === 0) {
+        phase = -1
         if (snippets.overlayState.results.length !== 1) {
           console.error("SNIPPET_SMOKE_FAILURE catalog did not render")
           Qt.quit()
@@ -79,6 +92,19 @@ ShellRoot {
         }
         snippets.applyEvent({ type: "SET_QUERY", query: "support" })
         snippets.applyEvent({ type: "REQUEST_TRANSFER", kind: "COPY" })
+      } else if (phase === 1) {
+        phase = 2
+        snippets.applyEvent({ type: "OPEN_CREATE" })
+        snippets.applyEvent({ type: "UPDATE_DRAFT", field: "title", value: "Created in runtime" })
+        snippets.applyEvent({ type: "ADD_KEYWORD", value: "comma,value" })
+        snippets.applyEvent({ type: "UPDATE_DRAFT", field: "content", value: "Runtime 👋\ncontent" })
+        snippets.applyEvent({ type: "SUBMIT_CREATE" })
+      } else if (phase === 2) {
+        if (snippets.overlayState.catalog.snippets.length !== 2
+            || snippets.overlayState.selectedId === "550e8400-e29b-41d4-a716-446655440000") {
+          console.error("SNIPPET_SMOKE_FAILURE create did not persist and select")
+        }
+        Qt.quit()
       }
     }
   }
@@ -114,8 +140,13 @@ fi
   printf 'Runtime smoke test created a user plugin\n' >&2
   exit 1
 }
-[[ -f $isolated_data/omarchy-snippets/snippets.json ]] || {
+catalog_path="$isolated_data/omarchy-snippets/snippets.json"
+[[ -f $catalog_path ]] || {
   printf 'Runtime smoke test did not use isolated snippet data\n' >&2
+  exit 1
+}
+jq -e '.snippets | length == 2 and any(.[]; .title == "Created in runtime" and .keywords == ["comma,value"] and .content == "Runtime 👋\ncontent")' "$catalog_path" >/dev/null || {
+  printf 'Runtime smoke test did not persist the created snippet\n' >&2
   exit 1
 }
 

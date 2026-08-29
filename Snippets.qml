@@ -19,6 +19,11 @@ Item {
   property bool readExited: false
   property bool readStreamFinished: false
   property int readExitCode: 6
+  property string idOutput: ""
+  property bool idExited: false
+  property bool idStreamFinished: false
+  property int idExitCode: 1
+  property string writePayload: ""
 
   readonly property string sourceDir: root.manifest && root.manifest.__sourceDir
     ? String(root.manifest.__sourceDir) : ""
@@ -72,6 +77,8 @@ Item {
     for (var i = 0; i < effects.length; i++) {
       var effect = effects[i]
       if (effect.type === "READ_STORE") root.startRead(effect)
+      else if (effect.type === "GENERATE_CREATE_ID") root.startIdGeneration(effect)
+      else if (effect.type === "WRITE_STORE") root.startWrite(effect)
       else if (effect.type === "DISMISS") root.dismiss()
       else if (effect.type === "DISPATCH_TRANSFER") root.transferRequested(effect.payload)
     }
@@ -101,6 +108,43 @@ Item {
     if (root.opened) root.applyEvent(event)
   }
 
+  function startIdGeneration(effect) {
+    var command = OverlayModel.processCommand(effect, root.storePath)
+    if (!command || idProc.running) {
+      root.applyEvent({ type: "CREATE_ID_FAILED" })
+      return
+    }
+
+    root.idOutput = ""
+    root.idExited = false
+    root.idStreamFinished = false
+    root.idExitCode = 1
+    idProc.command = command
+    idProc.running = true
+  }
+
+  function finishIdIfReady() {
+    if (!root.idExited || !root.idStreamFinished) return
+
+    var event = OverlayModel.createIdEvent(root.idExitCode, root.idOutput, new Date().toISOString())
+    root.idExited = false
+    root.idStreamFinished = false
+    if (root.opened) root.applyEvent(event)
+  }
+
+  function startWrite(effect) {
+    var command = OverlayModel.processCommand(effect, root.storePath)
+    if (!command || writeProc.running || typeof effect.payload !== "string") {
+      root.applyEvent({ type: "WRITE_FAILED" })
+      return
+    }
+
+    root.writePayload = effect.payload
+    writeProc.stdinEnabled = true
+    writeProc.command = command
+    writeProc.running = true
+  }
+
   function handleKey(event) {
     if (root.overlayState.mode === "load-error") {
       if (event.key === Qt.Key_Escape) root.dismiss()
@@ -122,6 +166,9 @@ Item {
 
     if (event.key === Qt.Key_Escape) {
       root.applyEvent({ type: "ESCAPE" })
+      event.accepted = true
+    } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
+      root.applyEvent({ type: "OPEN_CREATE" })
       event.accepted = true
     } else if (Util.editsFilter(event, root.overlayState.query)) {
       root.applyEvent({ type: "SET_QUERY", query: Util.editedFilter(event, root.overlayState.query) })
@@ -177,6 +224,46 @@ Item {
     }
   }
 
+  Process {
+    id: idProc
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.idOutput = String(text || "")
+        root.idStreamFinished = true
+        root.finishIdIfReady()
+      }
+    }
+
+    stderr: StdioCollector { waitForEnd: true }
+
+    onExited: function(exitCode, exitStatus) {
+      root.idExitCode = exitStatus === 0 ? exitCode : 1
+      root.idExited = true
+      root.finishIdIfReady()
+    }
+  }
+
+  Process {
+    id: writeProc
+    stdinEnabled: true
+    stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { waitForEnd: true }
+
+    onStarted: {
+      write(root.writePayload)
+      root.writePayload = ""
+      stdinEnabled = false
+    }
+
+    onExited: function(exitCode, exitStatus) {
+      if (!root.opened) return
+      var status = exitStatus === 0 ? exitCode : 6
+      root.applyEvent(OverlayModel.storeWriteEvent(status))
+    }
+  }
+
   PanelWindow {
     id: panel
     visible: root.opened
@@ -222,6 +309,8 @@ Item {
       SnippetSearchView {
         id: searchView
         anchors.fill: parent
+        visible: root.overlayState.mode === "loading" || root.overlayState.mode === "search"
+          || root.overlayState.mode === "load-error"
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
@@ -245,6 +334,40 @@ Item {
         }
         onRetryRequested: root.applyEvent({ type: "RETRY_LOAD" })
         onCloseRequested: root.dismiss()
+      }
+
+      SnippetEditor {
+        id: editor
+        anchors.fill: parent
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
+        visible: root.overlayState.mode === "create"
+        draft: root.overlayState.draft || ({ title: "", keywords: [], content: "" })
+        fieldErrors: root.overlayState.fieldErrors || ({})
+        focusField: root.overlayState.focusField
+        errorMessage: root.overlayState.errorMessage
+        busy: root.overlayState.busy
+        foreground: root.foreground
+        background: root.background
+        onFieldChanged: function(field, value) {
+          root.applyEvent({ type: "UPDATE_DRAFT", field: field, value: value })
+        }
+        onKeywordAdded: function(value) {
+          root.applyEvent({ type: "ADD_KEYWORD", value: value })
+        }
+        onKeywordChanged: function(index, value) {
+          root.applyEvent({ type: "UPDATE_KEYWORD", index: index, value: value })
+        }
+        onKeywordRemoved: function(index) {
+          root.applyEvent({ type: "REMOVE_KEYWORD", index: index })
+        }
+        onSaveRequested: root.applyEvent({ type: "SUBMIT_CREATE" })
+        onCancelRequested: {
+          root.applyEvent({ type: "CANCEL_EDITOR" })
+          Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        }
       }
     }
   }
