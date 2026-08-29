@@ -6,6 +6,7 @@ import qs.Commons
 import qs.Ui
 import "lib/SnippetCatalog.js" as SnippetCatalog
 import "lib/SnippetOverlayModel.js" as OverlayModel
+import "lib/SnippetTransfer.js" as SnippetTransfer
 import "ui"
 
 Item {
@@ -15,6 +16,12 @@ Item {
   property var manifest: null
   property bool opened: false
   property var overlayState: OverlayModel.initialState()
+  readonly property bool keyCatcherHasFocus: keyCatcher.activeFocus
+  readonly property bool searchKeysArmed: keyCatcher.activeFocus && (
+    overlayState.mode === "search"
+    || overlayState.mode === "loading"
+    || overlayState.mode === "load-error"
+    || overlayState.mode === "delete-confirm")
   property string readOutput: ""
   property bool readExited: false
   property bool readStreamFinished: false
@@ -36,6 +43,9 @@ Item {
     ? String(root.manifest.__sourceDir) : ""
   readonly property string storePath: Quickshell.env("SNIPPET_STORE_PATH")
     || (root.sourceDir ? root.sourceDir + "/bin/snippet-store" : "")
+  readonly property string transferPath: Quickshell.env("SNIPPET_TRANSFER_PATH")
+    || (root.sourceDir ? root.sourceDir + "/bin/snippet-transfer" : "")
+  property string transferPayload: ""
 
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -81,10 +91,23 @@ Item {
     return root.operationSerial
   }
 
+  function restoreSearchKeys() {
+    Qt.callLater(function() {
+      if (!root.opened) return
+      if (root.overlayState.mode === "create" || root.overlayState.mode === "edit") return
+      keyCatcher.forceActiveFocus()
+    })
+  }
+
   function applyEvent(event) {
+    var previousMode = root.overlayState.mode
     var result = OverlayModel.transition(root.overlayState, event, SnippetCatalog)
     root.overlayState = result.state
     root.executeEffects(result.effects)
+    if ((previousMode === "create" || previousMode === "edit")
+        && result.state.mode !== "create" && result.state.mode !== "edit") {
+      root.restoreSearchKeys()
+    }
   }
 
   function executeEffects(effects) {
@@ -94,7 +117,10 @@ Item {
       else if (effect.type === "GENERATE_CREATE_ID") root.startIdGeneration(effect)
       else if (effect.type === "WRITE_STORE") root.startWrite(effect)
       else if (effect.type === "DISMISS") root.dismiss()
-      else if (effect.type === "DISPATCH_TRANSFER") root.transferRequested(effect.payload)
+      else if (effect.type === "DISPATCH_TRANSFER") {
+        root.transferRequested(effect.payload)
+        root.startTransfer(effect.payload)
+      }
     }
   }
 
@@ -158,6 +184,32 @@ Item {
     root.idExited = false
     root.idStreamFinished = false
     if (root.opened) root.applyEvent(event)
+  }
+
+  function notifyTransferFailure(code) {
+    var command = SnippetTransfer.toastCommand(code)
+    if (command) Quickshell.execDetached(command)
+  }
+
+  function startTransfer(payload) {
+    var plan = SnippetTransfer.transferPlan(payload)
+    if (!plan.ok) {
+      root.notifyTransferFailure("INVALID_TRANSFER")
+      return
+    }
+
+    var command = SnippetTransfer.helperCommand(root.transferPath, plan.value)
+    if (!command) {
+      root.notifyTransferFailure("SPAWN_FAILED")
+      return
+    }
+    if (transferProc.running) return
+
+    root.transferPayload = plan.value.stdin
+    transferProc.launchPending = true
+    transferProc.stdinEnabled = true
+    transferProc.command = command
+    transferProc.running = true
   }
 
   function startWrite(effect) {
@@ -315,6 +367,33 @@ Item {
       root.idExitCode = exitStatus === 0 ? exitCode : 1
       root.idExited = true
       root.finishIdIfReady()
+    }
+  }
+
+  Process {
+    id: transferProc
+    property bool launchPending: false
+    stdinEnabled: true
+    stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { waitForEnd: true }
+
+    onStarted: {
+      launchPending = false
+      write(root.transferPayload)
+      root.transferPayload = ""
+      stdinEnabled = false
+    }
+
+    onRunningChanged: {
+      if (running || !launchPending) return
+      launchPending = false
+      root.transferPayload = ""
+      stdinEnabled = false
+      root.notifyTransferFailure("SPAWN_FAILED")
+    }
+
+    onExited: function(exitCode, exitStatus) {
+      if (exitStatus !== 0 || exitCode !== 0) root.notifyTransferFailure("TRANSFER_FAILED")
     }
   }
 
