@@ -48,7 +48,8 @@ test("initialState starts closed without transient catalog or selection", () => 
     fieldErrors: {},
     focusField: "",
     returnSearch: null,
-    pendingIntent: null
+    pendingIntent: null,
+    targetId: null
   })
 })
 
@@ -390,4 +391,92 @@ test("WRITE_FAILED preserves the create draft and does not commit pending catalo
   assert.equal(failed.state.catalog.snippets.length, 0)
   assert.equal(failed.state.errorMessage, "Unable to save snippet")
   assert.equal(failed.state.errorMessage.includes("Private"), false)
+})
+
+test("OPEN_EDIT loads the selected stable ID and cancel restores search", () => {
+  const source = loaded([snippet(1, {
+    title: "Original",
+    keywords: ["comma,value", "second"],
+    content: "Line 1\r\nLine 2"
+  })])
+
+  const opened = transition(source, { type: "OPEN_EDIT" })
+  const canceled = transition(opened.state, { type: "CANCEL_EDITOR" })
+
+  assert.equal(opened.state.mode, "edit")
+  assert.equal(opened.state.targetId, snippet(1).id)
+  assert.deepEqual(opened.state.draft, {
+    title: "Original",
+    keywords: ["comma,value", "second"],
+    content: "Line 1\r\nLine 2"
+  })
+  assert.equal(canceled.state.mode, "search")
+  assert.equal(canceled.state.selectedId, snippet(1).id)
+})
+
+test("OPEN_EDIT without a result is a no-op", () => {
+  const empty = loaded([])
+  assert.deepEqual(transition(empty, { type: "OPEN_EDIT" }), { state: empty, effects: [] })
+})
+
+test("SUBMIT_EDIT validates fields and preserves the draft", () => {
+  let state = transition(loaded([snippet(1)]), { type: "OPEN_EDIT" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "   " }).state
+
+  const result = transition(state, { type: "SUBMIT_EDIT", now: "2026-08-29T13:00:00.000Z" })
+
+  assert.equal(result.state.mode, "edit")
+  assert.equal(result.state.busy, false)
+  assert.equal(result.state.focusField, "title")
+  assert.equal(result.state.draft.title, "   ")
+  assert.deepEqual(result.effects, [])
+})
+
+test("changed edit schedules canonical bytes without committing memory", () => {
+  const original = snippet(1, { keywords: ["comma,value"] })
+  let state = transition(loaded([original]), { type: "OPEN_EDIT" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: " Updated " }).state
+  state = transition(state, { type: "UPDATE_KEYWORD", index: 0, value: "comma,value" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "content", value: "Updated\ncontent" }).state
+
+  const prepared = transition(state, { type: "SUBMIT_EDIT", now: "2026-08-29T13:00:00.000Z" })
+
+  assert.equal(prepared.state.catalog.snippets[0].title, original.title)
+  assert.equal(prepared.state.busy, true)
+  assert.equal(prepared.state.pendingIntent.kind, "edit")
+  assert.equal(prepared.state.pendingIntent.id, original.id)
+  assert.equal(prepared.effects[0].type, "WRITE_STORE")
+  const serialized = JSON.parse(prepared.effects[0].payload)
+  assert.equal(serialized.snippets[0].title, "Updated")
+  assert.deepEqual(serialized.snippets[0].keywords, ["comma,value"])
+  assert.equal(serialized.snippets[0].updatedAt, "2026-08-29T13:00:00.000Z")
+})
+
+test("normalization-equivalent edit succeeds without a store write", () => {
+  let state = transition(loaded([snippet(1, { title: "Original", keywords: ["one"] })]), { type: "OPEN_EDIT" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "  Original  " }).state
+  state = transition(state, { type: "ADD_KEYWORD", value: "ONE" }).state
+
+  const result = transition(state, { type: "SUBMIT_EDIT", now: "2026-08-29T13:00:00.000Z" })
+
+  assert.equal(result.state.mode, "search")
+  assert.equal(result.state.query, "")
+  assert.equal(result.state.selectedId, snippet(1).id)
+  assert.equal(result.state.catalog.snippets[0].updatedAt, CREATED_AT)
+  assert.deepEqual(result.effects, [])
+})
+
+test("edit submission and write completion are duplicate-safe", () => {
+  let state = transition(loaded([snippet(1)]), { type: "OPEN_EDIT" }).state
+  state = transition(state, { type: "UPDATE_DRAFT", field: "title", value: "Changed" }).state
+  const submitted = transition(state, { type: "SUBMIT_EDIT", now: "2026-08-29T13:00:00.000Z" })
+  const duplicate = transition(submitted.state, { type: "SUBMIT_EDIT", now: "2026-08-29T14:00:00.000Z" })
+  const saved = transition(submitted.state, { type: "WRITE_SUCCEEDED" })
+
+  assert.deepEqual(duplicate, { state: submitted.state, effects: [] })
+  assert.equal(saved.state.mode, "search")
+  assert.equal(saved.state.selectedId, snippet(1).id)
+  assert.equal(saved.state.catalog.snippets[0].title, "Changed")
+  assert.equal(saved.state.catalog.snippets[0].createdAt, CREATED_AT)
+  assert.equal(saved.state.catalog.snippets[0].updatedAt, "2026-08-29T13:00:00.000Z")
 })
