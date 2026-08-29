@@ -116,6 +116,17 @@ ShellRoot {
         })
         if (edited.length !== 1 || edited[0].updatedAt !== "2026-08-29T13:00:00.000Z") {
           console.error("SNIPPET_SMOKE_FAILURE edit did not persist and select")
+          Qt.quit()
+          return
+        }
+        phase = 4
+        snippets.applyEvent({ type: "OPEN_DELETE" })
+        snippets.applyEvent({ type: "MOVE_CONFIRM" })
+        snippets.applyEvent({ type: "CONFIRM_DELETE" })
+      } else if (phase === 4) {
+        if (snippets.overlayState.catalog.snippets.length !== 1
+            || snippets.overlayState.catalog.snippets[0].id !== "550e8400-e29b-41d4-a716-446655440000") {
+          console.error("SNIPPET_SMOKE_FAILURE delete did not persist")
         }
         Qt.quit()
       }
@@ -158,8 +169,8 @@ catalog_path="$isolated_data/omarchy-snippets/snippets.json"
   printf 'Runtime smoke test did not use isolated snippet data\n' >&2
   exit 1
 }
-jq -e '.snippets | length == 2 and any(.[]; .title == "Edited in runtime" and .keywords == ["comma,value"] and .content == "Runtime 👋\ncontent" and .updatedAt == "2026-08-29T13:00:00.000Z")' "$catalog_path" >/dev/null || {
-  printf 'Runtime smoke test did not persist the created and edited snippet\n' >&2
+jq -e '.snippets | length == 1 and .[0].id == "550e8400-e29b-41d4-a716-446655440000"' "$catalog_path" >/dev/null || {
+  printf 'Runtime smoke test did not persist the created, edited, and deleted snippet flow\n' >&2
   exit 1
 }
 

@@ -145,7 +145,28 @@ Item {
     writeProc.running = true
   }
 
+  function selectedTitle() {
+    for (var i = 0; i < root.overlayState.results.length; i++) {
+      if (root.overlayState.results[i].id === root.overlayState.targetId) {
+        return root.overlayState.results[i].title
+      }
+    }
+    return ""
+  }
+
   function handleKey(event) {
+    if (root.overlayState.mode === "delete-confirm") {
+      if (event.key === Qt.Key_Escape) root.applyEvent({ type: "CANCEL_DELETE" })
+      else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.applyEvent({ type: "CONFIRM_DELETE" })
+      else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right
+          || event.key === Qt.Key_Up || event.key === Qt.Key_Down
+          || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+        root.applyEvent({ type: "MOVE_CONFIRM" })
+      } else return
+      event.accepted = true
+      return
+    }
+
     if (root.overlayState.mode === "load-error") {
       if (event.key === Qt.Key_Escape) root.dismiss()
       else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.applyEvent({ type: "RETRY_LOAD" })
@@ -172,6 +193,9 @@ Item {
       event.accepted = true
     } else if (event.key === Qt.Key_E && (event.modifiers & Qt.ControlModifier)) {
       root.applyEvent({ type: "OPEN_EDIT" })
+      event.accepted = true
+    } else if (event.key === Qt.Key_X && (event.modifiers & Qt.ControlModifier)) {
+      root.applyEvent({ type: "OPEN_DELETE" })
       event.accepted = true
     } else if (Util.editsFilter(event, root.overlayState.query)) {
       root.applyEvent({ type: "SET_QUERY", query: Util.editedFilter(event, root.overlayState.query) })
@@ -313,12 +337,12 @@ Item {
         id: searchView
         anchors.fill: parent
         visible: root.overlayState.mode === "loading" || root.overlayState.mode === "search"
-          || root.overlayState.mode === "load-error"
+          || root.overlayState.mode === "load-error" || root.overlayState.mode === "delete-confirm"
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
         anchors.leftMargin: card.contentLeftInset
-        mode: root.overlayState.mode
+        mode: root.overlayState.mode === "delete-confirm" ? "search" : root.overlayState.mode
         query: root.overlayState.query
         results: root.overlayState.results
         selectedId: root.overlayState.selectedId || ""
@@ -337,6 +361,34 @@ Item {
         }
         onRetryRequested: root.applyEvent({ type: "RETRY_LOAD" })
         onCloseRequested: root.dismiss()
+      }
+
+      SnippetDeleteDialog {
+        id: deleteDialog
+        anchors.fill: parent
+        z: 3
+        visible: root.overlayState.mode === "delete-confirm"
+        snippetTitle: root.selectedTitle()
+        selectedAction: root.overlayState.confirmAction
+        errorMessage: root.overlayState.errorMessage
+        busy: root.overlayState.busy
+        background: root.background
+        foreground: root.foreground
+        scrim: root.scrim
+        selectedBackground: root.selectedBackground
+        selectedText: root.selectedText
+        onActionSelected: function(action) {
+          if (action !== root.overlayState.confirmAction) root.applyEvent({ type: "MOVE_CONFIRM" })
+          Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        }
+        onCancelRequested: {
+          root.applyEvent({ type: "CANCEL_DELETE" })
+          Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        }
+        onDeleteRequested: {
+          if (root.overlayState.confirmAction !== "delete") root.applyEvent({ type: "MOVE_CONFIRM" })
+          root.applyEvent({ type: "CONFIRM_DELETE" })
+        }
       }
 
       SnippetEditor {
