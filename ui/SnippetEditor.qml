@@ -6,6 +6,7 @@ import qs.Ui
 Item {
   id: root
 
+  property string editorMode: "create"
   property var draft: ({ title: "", keywords: [], content: "" })
   property var fieldErrors: ({})
   property string focusField: ""
@@ -65,7 +66,7 @@ Item {
 
       Text {
         width: parent.width
-        text: "Create snippet"
+        text: root.editorMode === "edit" ? "Edit snippet" : "Create snippet"
         textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily

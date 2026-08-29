@@ -170,6 +170,9 @@ Item {
     } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
       root.applyEvent({ type: "OPEN_CREATE" })
       event.accepted = true
+    } else if (event.key === Qt.Key_E && (event.modifiers & Qt.ControlModifier)) {
+      root.applyEvent({ type: "OPEN_EDIT" })
+      event.accepted = true
     } else if (Util.editsFilter(event, root.overlayState.query)) {
       root.applyEvent({ type: "SET_QUERY", query: Util.editedFilter(event, root.overlayState.query) })
       event.accepted = true
@@ -343,7 +346,8 @@ Item {
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
         anchors.leftMargin: card.contentLeftInset
-        visible: root.overlayState.mode === "create"
+        visible: root.overlayState.mode === "create" || root.overlayState.mode === "edit"
+        editorMode: root.overlayState.mode
         draft: root.overlayState.draft || ({ title: "", keywords: [], content: "" })
         fieldErrors: root.overlayState.fieldErrors || ({})
         focusField: root.overlayState.focusField
@@ -363,7 +367,13 @@ Item {
         onKeywordRemoved: function(index) {
           root.applyEvent({ type: "REMOVE_KEYWORD", index: index })
         }
-        onSaveRequested: root.applyEvent({ type: "SUBMIT_CREATE" })
+        onSaveRequested: {
+          if (root.overlayState.mode === "edit") {
+            root.applyEvent({ type: "SUBMIT_EDIT", now: new Date().toISOString() })
+          } else {
+            root.applyEvent({ type: "SUBMIT_CREATE" })
+          }
+        }
         onCancelRequested: {
           root.applyEvent({ type: "CANCEL_EDITOR" })
           Qt.callLater(function() { keyCatcher.forceActiveFocus() })

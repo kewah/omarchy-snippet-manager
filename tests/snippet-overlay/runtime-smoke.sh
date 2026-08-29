@@ -103,6 +103,19 @@ ShellRoot {
         if (snippets.overlayState.catalog.snippets.length !== 2
             || snippets.overlayState.selectedId === "550e8400-e29b-41d4-a716-446655440000") {
           console.error("SNIPPET_SMOKE_FAILURE create did not persist and select")
+          Qt.quit()
+          return
+        }
+        phase = 3
+        snippets.applyEvent({ type: "OPEN_EDIT" })
+        snippets.applyEvent({ type: "UPDATE_DRAFT", field: "title", value: "Edited in runtime" })
+        snippets.applyEvent({ type: "SUBMIT_EDIT", now: "2026-08-29T13:00:00.000Z" })
+      } else if (phase === 3) {
+        var edited = snippets.overlayState.catalog.snippets.filter(function(record) {
+          return record.title === "Edited in runtime"
+        })
+        if (edited.length !== 1 || edited[0].updatedAt !== "2026-08-29T13:00:00.000Z") {
+          console.error("SNIPPET_SMOKE_FAILURE edit did not persist and select")
         }
         Qt.quit()
       }
@@ -145,8 +158,8 @@ catalog_path="$isolated_data/omarchy-snippets/snippets.json"
   printf 'Runtime smoke test did not use isolated snippet data\n' >&2
   exit 1
 }
-jq -e '.snippets | length == 2 and any(.[]; .title == "Created in runtime" and .keywords == ["comma,value"] and .content == "Runtime 👋\ncontent")' "$catalog_path" >/dev/null || {
-  printf 'Runtime smoke test did not persist the created snippet\n' >&2
+jq -e '.snippets | length == 2 and any(.[]; .title == "Edited in runtime" and .keywords == ["comma,value"] and .content == "Runtime 👋\ncontent" and .updatedAt == "2026-08-29T13:00:00.000Z")' "$catalog_path" >/dev/null || {
+  printf 'Runtime smoke test did not persist the created and edited snippet\n' >&2
   exit 1
 }
 
