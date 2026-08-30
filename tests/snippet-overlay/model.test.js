@@ -978,6 +978,13 @@ test("searchStatus distinguishes empty catalog, no matches, and results", () => 
   )
 })
 
+test("showsSearchField hides search only for a true empty catalog", () => {
+  assert.equal(OverlayModel.showsSearchField("empty"), false)
+  assert.equal(OverlayModel.showsSearchField("no-results"), true)
+  assert.equal(OverlayModel.showsSearchField("results"), true)
+  assert.equal(OverlayModel.showsSearchField(""), true)
+})
+
 test("usesSplitDetail keeps two panes only when the surface is wide enough", () => {
   assert.equal(OverlayModel.usesSplitDetail(560, 560), true)
   assert.equal(OverlayModel.usesSplitDetail(559, 560), false)
@@ -987,19 +994,18 @@ test("usesSplitDetail keeps two panes only when the surface is wide enough", () 
 
 test("shortcutHints name every approved search action", () => {
   const hints = OverlayModel.shortcutHints()
+  const expected = [
+    OverlayModel.labeledShortcut("Next", "Ctrl+N"),
+    OverlayModel.labeledShortcut("Prev", "Ctrl+P"),
+    OverlayModel.labeledShortcut("Create", "Ctrl+Shift+N"),
+    OverlayModel.labeledShortcut("Edit", "Ctrl+E"),
+    OverlayModel.labeledShortcut("Delete", "Ctrl+X"),
+    OverlayModel.labeledShortcut("Paste", "Enter"),
+    OverlayModel.labeledShortcut("Copy", "Ctrl+Enter"),
+  ].join("  ·  ")
 
-  assert.match(hints, /Ctrl\+N/)
-  assert.match(hints, /Ctrl\+P/)
-  assert.match(hints, /Ctrl\+Shift\+N/)
-  assert.match(hints, /Ctrl\+E/)
-  assert.match(hints, /Ctrl\+X/)
-  assert.match(hints, /Enter/)
-  assert.match(hints, /Ctrl\+Enter/)
-  assert.match(hints, /Create/)
-  assert.match(hints, /Edit/)
-  assert.match(hints, /Delete/)
-  assert.match(hints, /Paste/)
-  assert.match(hints, /Copy/)
+  assert.equal(hints, expected)
+  assert.equal(hints.includes("Ctrl+N Next"), false)
 })
 
 test("resultAccessibleName uses title without snippet content", () => {

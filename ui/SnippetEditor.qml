@@ -17,6 +17,7 @@ Item {
   property color foreground: Color.menu.text
   property color background: Color.menu.background
   property string fontFamily: Style.font.menuFamily
+  readonly property int fieldChromeInset: Math.max(1, Style.focusBorderWidth)
 
   signal fieldChanged(string field, string value)
   signal saveRequested()
@@ -47,12 +48,13 @@ Item {
     anchors.fill: parent
     contentWidth: width
     contentHeight: form.implicitHeight
-    clip: true
+    clip: false
     boundsBehavior: Flickable.StopAtBounds
 
     Column {
       id: form
-      width: parent.width
+      x: root.fieldChromeInset
+      width: parent.width - root.fieldChromeInset * 2
       spacing: Style.spacing.md
 
       Text {
@@ -75,30 +77,30 @@ Item {
         font.pixelSize: Style.font.caption
       }
 
-      Item {
+      SnippetFieldChrome {
+        id: titleChrome
         width: parent.width
-        height: titleField.height
-
-        Rectangle {
-          anchors.left: parent.left
-          anchors.top: parent.top
-          anchors.bottom: parent.bottom
-          width: Style.space(3)
-          visible: titleField.activeFocus
-          color: root.foreground
-          radius: Style.cornerRadius
-        }
+        implicitHeight: titleField.implicitHeight + chromePad * 2
+        height: implicitHeight
+        focused: titleField.activeFocus
+        hovered: titleField.hovered
+        foreground: root.foreground
 
         TextField {
           id: titleField
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.leftMargin: titleField.activeFocus ? Style.spacing.sm : 0
+          anchors.fill: parent
+          anchors.margins: titleChrome.chromePad
           text: root.draft ? root.draft.title : ""
           placeholderText: "Snippet title"
           enabled: root.editable
           foreground: root.foreground
           font.family: root.fontFamily
+          background: Item {}
+          cursorDelegate: Rectangle {
+            width: Math.max(1, Style.normalBorderWidth)
+            color: root.foreground
+            visible: titleField.cursorVisible
+          }
           activeFocusOnTab: true
           Accessible.role: Accessible.EditableText
           Accessible.name: "Title"
@@ -127,26 +129,19 @@ Item {
         font.pixelSize: Style.font.caption
       }
 
-      Item {
+      SnippetFieldChrome {
+        id: contentChrome
         width: parent.width
-        height: contentArea.height
-
-        Rectangle {
-          anchors.left: parent.left
-          anchors.top: parent.top
-          anchors.bottom: parent.bottom
-          width: Style.space(3)
-          visible: contentArea.activeFocus
-          color: root.foreground
-          radius: Style.cornerRadius
-        }
+        implicitHeight: Math.max(Style.space(180), contentArea.implicitHeight) + chromePad * 2
+        height: implicitHeight
+        focused: contentArea.activeFocus
+        hovered: contentArea.hovered
+        foreground: root.foreground
 
         QQC.TextArea {
           id: contentArea
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.leftMargin: contentArea.activeFocus ? Style.spacing.sm : 0
-          height: Math.max(Style.space(180), implicitHeight)
+          anchors.fill: parent
+          anchors.margins: contentChrome.chromePad
           text: root.draft ? root.draft.content : ""
           placeholderText: "Snippet content"
           enabled: root.editable
@@ -159,17 +154,18 @@ Item {
           color: root.foreground
           selectionColor: Style.selectionFillFor(root.foreground, Color.accent)
           selectedTextColor: root.foreground
+          background: Item {}
+          cursorDelegate: Rectangle {
+            width: Math.max(1, Style.normalBorderWidth)
+            color: root.foreground
+            visible: contentArea.cursorVisible
+          }
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
           leftPadding: Style.spacing.controlPaddingX
           rightPadding: Style.spacing.controlPaddingX
           topPadding: Style.spacing.inputPaddingY
           bottomPadding: Style.spacing.inputPaddingY
-          background: BorderSurface {
-            color: Style.controlFill(contentArea.activeFocus, contentArea.hovered, root.foreground, Color.accent)
-            borderSpec: Border.controlSpec(contentArea.activeFocus ? "focus" : (contentArea.hovered ? "hover-cursor" : "normal"), root.foreground, Color.accent)
-            radius: Style.cornerRadius
-          }
           onTextChanged: if (activeFocus) root.fieldChanged("content", text)
         }
       }
@@ -196,46 +192,35 @@ Item {
         wrapMode: Text.Wrap
       }
 
-      Flow {
+      Item {
         width: parent.width
-        spacing: Style.spacing.sm
+        height: editorActions.height
 
-        Button {
-          text: root.busy ? "Saving…" : "Save"
-          focusable: true
-          bordered: true
-          enabled: root.editable
-          hasCursor: activeFocus
-          foreground: root.foreground
-          Accessible.role: Accessible.Button
-          Accessible.name: root.busy ? "Saving" : "Save"
-          Accessible.onPressAction: root.saveRequested()
-          onClicked: root.saveRequested()
+        Row {
+          id: editorActions
+          anchors.right: parent.right
+          spacing: Style.spacing.sm
+
+          SnippetButton {
+            label: root.busy ? "Saving…" : "Save"
+            shortcut: "Ctrl+S"
+            focusable: true
+            enabled: root.editable
+            hasCursor: activeFocus
+            foreground: root.foreground
+            onClicked: root.saveRequested()
+          }
+
+          SnippetButton {
+            label: "Cancel"
+            shortcut: "Escape"
+            focusable: true
+            enabled: !root.busy
+            hasCursor: activeFocus
+            foreground: root.foreground
+            onClicked: root.cancelRequested()
+          }
         }
-
-        Button {
-          text: "Cancel"
-          focusable: true
-          bordered: true
-          enabled: !root.busy
-          hasCursor: activeFocus
-          foreground: root.foreground
-          Accessible.role: Accessible.Button
-          Accessible.name: "Cancel"
-          Accessible.onPressAction: root.cancelRequested()
-          onClicked: root.cancelRequested()
-        }
-      }
-
-      Text {
-        width: parent.width
-        text: "Ctrl+S Save  ·  Escape Cancel"
-        textFormat: Text.PlainText
-        color: root.foreground
-        opacity: 0.55
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        horizontalAlignment: Text.AlignRight
       }
     }
   }

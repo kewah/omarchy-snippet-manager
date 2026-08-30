@@ -485,12 +485,11 @@ Item {
         selectedId: root.overlayState.selectedId || ""
         searchStatus: OverlayModel.searchStatus(root.overlayState)
         assistiveHidden: root.overlayState.mode === "delete-confirm"
-        keyboardActive: keyCatcher.activeFocus && (root.overlayState.mode === "search"
-          || root.overlayState.mode === "loading"
-          || root.overlayState.mode === "load-error")
+        keyboardActive: root.searchKeysArmed && root.overlayState.mode !== "delete-confirm"
         errorMessage: root.overlayState.errorMessage
         background: root.background
         foreground: root.foreground
+        border: root.border
         selectedBackground: root.selectedBackground
         selectedText: root.selectedText
         onRowSelected: function(index) {

@@ -16,15 +16,19 @@ Item {
   property string errorMessage: ""
   property color background: Color.menu.background
   property color foreground: Color.menu.text
+  property color border: Color.menu.border
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
   property string fontFamily: Style.font.menuFamily
-  readonly property int rowHeight: Math.max(Style.space(58), Style.font.title + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  property int contentMargin: Style.spacing.panelPadding
+  property int contentSpacing: Style.spacing.md
+  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  readonly property int rowHeight: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
   readonly property int visibleRowCount: Math.max(1, Math.floor(resultList.height / rowHeight))
-  readonly property bool splitDetail: OverlayModel.usesSplitDetail(width, Style.space(560))
   readonly property bool showHints: OverlayModel.usesSplitDetail(width, Style.space(520))
-  readonly property bool showDetail: splitDetail || height >= rowHeight * 2 + Style.space(120)
   readonly property string hints: OverlayModel.shortcutHints()
+  readonly property var emptyCopy: OverlayModel.emptyStateCopy(root.searchStatus)
+  readonly property bool showSearchField: OverlayModel.showsSearchField(root.searchStatus)
 
   signal rowSelected(int index)
   signal rowActivated(int index)
@@ -69,26 +73,20 @@ Item {
 
   Column {
     anchors.fill: parent
-    spacing: Style.spacing.md
+    spacing: root.contentSpacing
 
-    Item {
+    Rectangle {
       width: parent.width
-      height: Math.max(Style.space(38), Style.font.heading + Style.spacing.controlPaddingY * 2)
-
-      Rectangle {
-        anchors.left: parent.left
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        width: Style.space(3)
-        visible: root.keyboardActive
-        color: root.foreground
-        radius: Style.cornerRadius
-      }
+      height: root.showSearchField ? root.headerHeight : 0
+      visible: root.showSearchField
+      radius: Style.cornerRadius
+      color: "transparent"
+      clip: true
 
       Text {
+        id: queryText
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: root.keyboardActive ? Style.spacing.md : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.query || "Search snippets…"
         textFormat: Text.PlainText
@@ -99,11 +97,30 @@ Item {
         elide: Text.ElideRight
         Accessible.ignored: true
       }
+
+      Rectangle {
+        id: queryCaret
+        width: Math.max(1, Style.normalBorderWidth)
+        height: queryText.height
+        color: root.foreground
+        visible: root.keyboardActive
+        anchors.verticalCenter: queryText.verticalCenter
+        x: root.query ? Math.min(queryText.contentWidth, Math.max(0, queryText.width - width)) : 0
+        onVisibleChanged: if (visible) opacity = 1
+
+        SequentialAnimation on opacity {
+          running: queryCaret.visible
+          loops: Animation.Infinite
+          NumberAnimation { to: 0; duration: 530 }
+          NumberAnimation { to: 1; duration: 530 }
+        }
+      }
     }
 
     Item {
       width: parent.width
-      height: parent.height - parent.spacing - parent.children[0].height
+      height: parent.height
+        - (root.showSearchField ? root.headerHeight + root.contentSpacing : 0)
         - (hintRow.visible ? parent.spacing + hintRow.height : 0)
 
       Item {
@@ -112,153 +129,121 @@ Item {
         visible: root.mode === "search" && root.results.length > 0
         Accessible.ignored: root.assistiveHidden
 
-        ListView {
-          id: resultList
-          x: 0
-          y: 0
-          width: root.splitDetail && root.showDetail ? parent.width / 2 : parent.width
-          height: root.splitDetail || !root.showDetail ? parent.height : Math.floor(parent.height * 0.48)
-          model: root.results
-          clip: true
-          spacing: Style.space(4)
-          boundsBehavior: Flickable.StopAtBounds
-          Accessible.role: Accessible.List
-          Accessible.name: "Snippet results"
-          Accessible.ignored: root.assistiveHidden
+        Row {
+          anchors.fill: parent
+          spacing: 0
 
-          delegate: Rectangle {
-            id: resultRow
-            required property int index
-            required property var modelData
+          Item {
+            width: parent.width / 2
+            height: parent.height
+            clip: true
 
-            readonly property bool hasCursor: modelData.id === root.selectedId
+            ListView {
+              id: resultList
+              anchors.fill: parent
+              anchors.rightMargin: root.contentMargin
+              model: root.results
+              clip: true
+              spacing: Style.space(4)
+              boundsBehavior: Flickable.StopAtBounds
+              Accessible.role: Accessible.List
+              Accessible.name: "Snippet results"
+              Accessible.ignored: root.assistiveHidden
 
-            width: ListView.view.width - (root.splitDetail && root.showDetail ? Style.spacing.md : 0)
-            height: root.rowHeight
-            radius: Style.cornerRadius
-            color: hasCursor ? root.selectedBackground : "transparent"
-            Accessible.role: Accessible.ListItem
-            Accessible.name: OverlayModel.resultAccessibleName(resultRow.modelData)
-            Accessible.description: OverlayModel.previewText(resultRow.modelData.content, 100)
-            Accessible.selectable: true
-            Accessible.selected: resultRow.hasCursor
-            Accessible.ignored: root.assistiveHidden
-            Accessible.onPressAction: {
-              root.rowSelected(resultRow.index)
-              root.rowActivated(resultRow.index)
+              delegate: Rectangle {
+                id: resultRow
+                required property int index
+                required property var modelData
+
+                readonly property bool hasCursor: modelData.id === root.selectedId
+
+                width: ListView.view.width
+                height: root.rowHeight
+                radius: Style.cornerRadius
+                color: hasCursor ? root.selectedBackground : "transparent"
+                Accessible.role: Accessible.ListItem
+                Accessible.name: OverlayModel.resultAccessibleName(resultRow.modelData)
+                Accessible.description: OverlayModel.previewText(resultRow.modelData.content, 100)
+                Accessible.selectable: true
+                Accessible.selected: resultRow.hasCursor
+                Accessible.ignored: root.assistiveHidden
+                Accessible.onPressAction: {
+                  root.rowSelected(resultRow.index)
+                  root.rowActivated(resultRow.index)
+                }
+
+                Text {
+                  anchors.fill: parent
+                  anchors.leftMargin: Style.space(12)
+                  anchors.rightMargin: Style.space(12)
+                  anchors.topMargin: Style.space(8)
+                  anchors.bottomMargin: Style.space(8)
+                  text: OverlayModel.listItemText(resultRow.modelData)
+                  textFormat: Text.PlainText
+                  color: resultRow.hasCursor ? root.selectedText : root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.title
+                  elide: Text.ElideRight
+                  wrapMode: Text.NoWrap
+                  verticalAlignment: Text.AlignVCenter
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onPositionChanged: function(mouse) {
+                    if (pointerGate.moved(resultRow, mouse)) root.rowSelected(resultRow.index)
+                  }
+                  onClicked: function(mouse) {
+                    root.rowSelected(resultRow.index)
+                    if (mouse.button === Qt.LeftButton) root.rowActivated(resultRow.index)
+                  }
+                }
+              }
             }
+          }
+
+          Item {
+            id: detailPane
+            width: parent.width / 2
+            height: parent.height
+            clip: true
+            Accessible.role: Accessible.StaticText
+            Accessible.name: root.selectedSnippet() ? root.selectedSnippet().title : "Snippet detail"
+            Accessible.description: root.selectedSnippet() ? OverlayModel.previewText(root.selectedSnippet().content, 160) : ""
+            Accessible.ignored: root.assistiveHidden
 
             Rectangle {
               anchors.left: parent.left
               anchors.top: parent.top
               anchors.bottom: parent.bottom
-              width: Style.space(3)
-              visible: resultRow.hasCursor
-              color: root.selectedText
-              radius: Style.cornerRadius
+              width: Style.normalBorderWidth
+              color: Util.alpha(root.border, 0.28)
             }
 
-            Column {
+            Flickable {
               anchors.fill: parent
-              anchors.leftMargin: Style.spacing.md
-              anchors.rightMargin: Style.spacing.md
-              anchors.topMargin: Style.spacing.sm
-              anchors.bottomMargin: Style.spacing.sm
-              spacing: Style.space(2)
+              anchors.leftMargin: root.contentMargin
+              contentWidth: width
+              contentHeight: detailColumn.implicitHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
 
-              Text {
+              Column {
+                id: detailColumn
                 width: parent.width
-                text: resultRow.modelData.title
-                textFormat: Text.PlainText
-                color: resultRow.hasCursor ? root.selectedText : root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.title
-                elide: Text.ElideRight
-              }
+                spacing: Style.spacing.md
 
-              Text {
-                width: parent.width
-                text: OverlayModel.previewText(resultRow.modelData.content, 100)
-                textFormat: Text.PlainText
-                color: resultRow.hasCursor ? root.selectedText : root.foreground
-                opacity: 0.65
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                elide: Text.ElideRight
-              }
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onPositionChanged: function(mouse) {
-                if (pointerGate.moved(resultRow, mouse)) root.rowSelected(resultRow.index)
-              }
-              onClicked: function(mouse) {
-                root.rowSelected(resultRow.index)
-                if (mouse.button === Qt.LeftButton) root.rowActivated(resultRow.index)
-              }
-            }
-          }
-        }
-
-        Item {
-          id: detailPane
-          visible: root.showDetail
-          x: root.splitDetail ? parent.width / 2 : 0
-          y: root.splitDetail ? 0 : resultList.height
-          width: root.splitDetail ? parent.width / 2 : parent.width
-          height: root.splitDetail ? parent.height : parent.height - resultList.height
-          clip: true
-          Accessible.role: Accessible.StaticText
-          Accessible.name: root.selectedSnippet() ? root.selectedSnippet().title : "Snippet detail"
-          Accessible.description: root.selectedSnippet() ? OverlayModel.previewText(root.selectedSnippet().content, 160) : ""
-          Accessible.ignored: root.assistiveHidden
-
-          Rectangle {
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.right: root.splitDetail ? undefined : parent.right
-            anchors.bottom: root.splitDetail ? parent.bottom : undefined
-            width: root.splitDetail ? Style.normalBorderWidth : parent.width
-            height: root.splitDetail ? parent.height : Style.normalBorderWidth
-            color: root.foreground
-            opacity: 0.18
-          }
-
-          Flickable {
-            anchors.fill: parent
-            anchors.leftMargin: root.splitDetail ? Style.spacing.lg : 0
-            anchors.topMargin: root.splitDetail ? 0 : Style.spacing.md
-            contentWidth: width
-            contentHeight: detailColumn.implicitHeight
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-
-            Column {
-              id: detailColumn
-              width: parent.width
-              spacing: Style.spacing.md
-
-              Text {
-                width: parent.width
-                text: root.selectedSnippet() ? root.selectedSnippet().title : ""
-                textFormat: Text.PlainText
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.heading
-                wrapMode: Text.Wrap
-              }
-
-              Text {
-                width: parent.width
-                text: root.selectedSnippet() ? root.selectedSnippet().content : ""
-                textFormat: Text.PlainText
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                wrapMode: Text.Wrap
+                Text {
+                  width: parent.width
+                  text: root.selectedSnippet() ? root.selectedSnippet().content : ""
+                  textFormat: Text.PlainText
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.title
+                  wrapMode: Text.Wrap
+                }
               }
             }
           }
@@ -307,23 +292,17 @@ Item {
           anchors.horizontalCenter: parent.horizontalCenter
           spacing: Style.spacing.sm
 
-          Button {
-            text: "Retry"
-            bordered: true
+          SnippetButton {
+            label: "Retry"
+            shortcut: "Enter"
             foreground: root.foreground
-            Accessible.role: Accessible.Button
-            Accessible.name: "Retry"
-            Accessible.onPressAction: root.retryRequested()
             onClicked: root.retryRequested()
           }
 
-          Button {
-            text: "Close"
-            bordered: true
+          SnippetButton {
+            label: "Close"
+            shortcut: "Escape"
             foreground: root.foreground
-            Accessible.role: Accessible.Button
-            Accessible.name: "Close"
-            Accessible.onPressAction: root.closeRequested()
             onClicked: root.closeRequested()
           }
         }
@@ -331,18 +310,19 @@ Item {
 
       Column {
         anchors.centerIn: parent
-        spacing: Style.spacing.sm
+        spacing: Style.space(8)
         visible: root.mode === "search"
           && (root.searchStatus === "empty" || root.searchStatus === "no-results")
         Accessible.role: Accessible.StaticText
-        Accessible.name: root.searchStatus === "empty" ? "No snippets yet" : "No matching snippets"
+        Accessible.name: root.emptyCopy.heading
         Accessible.ignored: root.assistiveHidden
 
         Text {
           width: parent.width
-          text: root.searchStatus === "empty" ? "No snippets yet" : "No matching snippets"
+          text: root.emptyCopy.heading
           textFormat: Text.PlainText
           color: root.foreground
+          opacity: 0.7
           font.family: root.fontFamily
           font.pixelSize: Style.font.title
           horizontalAlignment: Text.AlignHCenter
@@ -350,7 +330,8 @@ Item {
 
         Text {
           width: parent.width
-          text: root.searchStatus === "empty" ? "Create a snippet to get started" : "Try a different search"
+          visible: text.length > 0
+          text: root.emptyCopy.subtitle
           textFormat: Text.PlainText
           color: root.foreground
           opacity: 0.62
@@ -359,15 +340,12 @@ Item {
           horizontalAlignment: Text.AlignHCenter
         }
 
-        Button {
+        SnippetButton {
           visible: root.searchStatus === "empty"
           anchors.horizontalCenter: parent.horizontalCenter
-          text: "Create snippet"
-          bordered: true
+          label: "Create snippet"
+          shortcut: "Ctrl+Shift+N"
           foreground: root.foreground
-          Accessible.role: Accessible.Button
-          Accessible.name: "Create snippet"
-          Accessible.onPressAction: root.createRequested()
           onClicked: root.createRequested()
         }
       }

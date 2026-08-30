@@ -18,6 +18,7 @@ Item {
   property color selectedText: Color.menu.selectedText
   property var borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
   property bool pointerMoved: false
+  readonly property var dialogCopy: OverlayModel.deleteDialogCopy(root.snippetTitle)
 
   signal cancelRequested()
   signal deleteRequested()
@@ -39,8 +40,8 @@ Item {
   }
 
   Accessible.role: Accessible.Dialog
-  Accessible.name: "Delete snippet?"
-  Accessible.description: "Delete “" + root.snippetTitle + "”? This cannot be undone."
+  Accessible.name: root.dialogCopy.heading
+  Accessible.description: root.dialogCopy.subtitle
   Accessible.focused: visible
 
   MouseArea {
@@ -97,7 +98,7 @@ Item {
 
         Text {
           width: parent.width
-          text: "Delete snippet?"
+          text: root.dialogCopy.heading
           textFormat: Text.PlainText
           color: root.foreground
           font.family: Style.font.menuFamily
@@ -108,7 +109,7 @@ Item {
 
         Text {
           width: parent.width
-          text: "Delete “" + root.snippetTitle + "”? This cannot be undone."
+          text: root.dialogCopy.subtitle
           textFormat: Text.PlainText
           color: root.foreground
           font.family: Style.font.menuFamily
@@ -129,105 +130,93 @@ Item {
           wrapMode: Text.Wrap
         }
 
-        Flow {
+        Item {
           width: parent.width
-          spacing: Style.spacing.sm
+          height: deleteActions.height
 
-          Item {
-            width: cancelButton.width + Style.space(3)
-            height: cancelButton.height
+          Row {
+            id: deleteActions
+            anchors.right: parent.right
+            spacing: Style.spacing.sm
 
-            Rectangle {
-              anchors.left: parent.left
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              width: Style.space(3)
-              visible: root.selectedAction === "cancel"
-              color: root.selectedText
-              radius: Style.cornerRadius
-            }
+            Item {
+              width: cancelButton.width + Style.space(3)
+              height: cancelButton.height
 
-            Button {
-              id: cancelButton
-              x: Style.space(3)
-              text: "Cancel"
-              focusable: false
-              bordered: true
-              enabled: !root.busy
-              hasCursor: root.selectedAction === "cancel"
-              foreground: root.selectedAction === "cancel" ? root.selectedText : root.foreground
-              background: root.selectedAction === "cancel" ? root.selectedBackground : "transparent"
-              Accessible.role: Accessible.Button
-              Accessible.name: "Cancel"
-              Accessible.onPressAction: root.cancelRequested()
-              onClicked: root.cancelRequested()
-              onHovered: function(isHovered) {
-                if (!isHovered) {
-                  root.pointerMoved = true
-                  return
-                }
-                if (root.pointerMoved) root.actionSelected("cancel")
+              Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: Style.space(3)
+                visible: root.selectedAction === "cancel"
+                color: root.selectedText
+                radius: Style.cornerRadius
               }
 
-              HoverHandler {
-                onPointChanged: root.notePointer(cancelButton, point.position)
+              SnippetButton {
+                id: cancelButton
+                x: Style.space(3)
+                label: "Cancel"
+                shortcut: "Escape"
+                focusable: false
+                enabled: !root.busy
+                hasCursor: root.selectedAction === "cancel"
+                foreground: root.selectedAction === "cancel" ? root.selectedText : root.foreground
+                background: root.selectedAction === "cancel" ? root.selectedBackground : "transparent"
+                onClicked: root.cancelRequested()
+                onHovered: function(isHovered) {
+                  if (!isHovered) {
+                    root.pointerMoved = true
+                    return
+                  }
+                  if (root.pointerMoved) root.actionSelected("cancel")
+                }
+
+                HoverHandler {
+                  onPointChanged: root.notePointer(cancelButton, point.position)
+                }
+              }
+            }
+
+            Item {
+              width: deleteButton.width + Style.space(3)
+              height: deleteButton.height
+
+              Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: Style.space(3)
+                visible: root.selectedAction === "delete"
+                color: root.selectedText
+                radius: Style.cornerRadius
+              }
+
+              SnippetButton {
+                id: deleteButton
+                x: Style.space(3)
+                label: root.busy ? "Deleting…" : "Delete"
+                shortcut: "Enter"
+                focusable: false
+                enabled: !root.busy && !root.blocked
+                hasCursor: root.selectedAction === "delete"
+                foreground: root.selectedAction === "delete" ? root.selectedText : root.foreground
+                background: root.selectedAction === "delete" ? root.selectedBackground : "transparent"
+                onClicked: root.deleteRequested()
+                onHovered: function(isHovered) {
+                  if (!isHovered) {
+                    root.pointerMoved = true
+                    return
+                  }
+                  if (root.pointerMoved) root.actionSelected("delete")
+                }
+
+                HoverHandler {
+                  onPointChanged: root.notePointer(deleteButton, point.position)
+                }
               }
             }
           }
-
-          Item {
-            width: deleteButton.width + Style.space(3)
-            height: deleteButton.height
-
-            Rectangle {
-              anchors.left: parent.left
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              width: Style.space(3)
-              visible: root.selectedAction === "delete"
-              color: root.selectedText
-              radius: Style.cornerRadius
-            }
-
-            Button {
-              id: deleteButton
-              x: Style.space(3)
-              text: root.busy ? "Deleting…" : "Delete"
-              focusable: false
-              bordered: true
-              enabled: !root.busy && !root.blocked
-              hasCursor: root.selectedAction === "delete"
-              foreground: root.selectedAction === "delete" ? root.selectedText : root.foreground
-              background: root.selectedAction === "delete" ? root.selectedBackground : "transparent"
-              Accessible.role: Accessible.Button
-              Accessible.name: root.busy ? "Deleting…" : "Delete"
-              Accessible.onPressAction: root.deleteRequested()
-              onClicked: root.deleteRequested()
-              onHovered: function(isHovered) {
-                if (!isHovered) {
-                  root.pointerMoved = true
-                  return
-                }
-                if (root.pointerMoved) root.actionSelected("delete")
-              }
-
-              HoverHandler {
-                onPointChanged: root.notePointer(deleteButton, point.position)
-              }
-            }
-          }
-        }
-
-        Text {
-          width: parent.width
-          text: "Arrow keys or Tab to choose  ·  Enter confirm  ·  Escape cancel"
-          textFormat: Text.PlainText
-          color: root.foreground
-          opacity: 0.55
-          font.family: Style.font.menuFamily
-          font.pixelSize: Style.font.caption
-          horizontalAlignment: Text.AlignHCenter
-          wrapMode: Text.Wrap
         }
       }
     }
