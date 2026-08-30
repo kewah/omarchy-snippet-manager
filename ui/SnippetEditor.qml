@@ -7,7 +7,7 @@ Item {
   id: root
 
   property string editorMode: "create"
-  property var draft: ({ title: "", keywords: [], content: "" })
+  property var draft: ({ title: "", content: "" })
   property var fieldErrors: ({})
   property string focusField: ""
   property string errorMessage: ""
@@ -19,24 +19,13 @@ Item {
   property string fontFamily: Style.font.menuFamily
 
   signal fieldChanged(string field, string value)
-  signal keywordAdded(string value)
-  signal keywordChanged(int index, string value)
-  signal keywordRemoved(int index)
   signal saveRequested()
   signal cancelRequested()
 
   function focusRequestedField() {
     if (!root.visible) return
     if (root.focusField === "content") contentArea.forceActiveFocus()
-    else if (root.focusField === "keywords") keywordInput.forceActiveFocus()
     else titleField.forceActiveFocus()
-  }
-
-  function addKeyword() {
-    if (!root.editable || !keywordInput.text.trim()) return
-    root.keywordAdded(keywordInput.text)
-    keywordInput.text = ""
-    keywordInput.forceActiveFocus()
   }
 
   onVisibleChanged: if (visible) Qt.callLater(root.focusRequestedField)
@@ -122,100 +111,6 @@ Item {
         width: parent.width
         visible: text.length > 0
         text: root.fieldErrors.title || ""
-        textFormat: Text.PlainText
-        color: Color.urgent
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.Wrap
-      }
-
-      Text {
-        width: parent.width
-        text: "Keywords"
-        textFormat: Text.PlainText
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-      }
-
-      Column {
-        width: parent.width
-        spacing: Style.spacing.sm
-
-        Repeater {
-          model: root.draft ? root.draft.keywords : []
-
-          delegate: Row {
-            id: keywordRow
-            required property int index
-            required property string modelData
-
-            width: parent.width
-            spacing: Style.spacing.sm
-
-            TextField {
-              width: Math.max(1, parent.width - removeButton.width - parent.spacing)
-              text: keywordRow.modelData
-              enabled: root.editable
-              foreground: root.foreground
-              font.family: root.fontFamily
-              activeFocusOnTab: true
-              Accessible.role: Accessible.EditableText
-              Accessible.name: "Keyword " + (keywordRow.index + 1)
-              onTextEdited: root.keywordChanged(keywordRow.index, text)
-            }
-
-            Button {
-              id: removeButton
-              text: "Remove"
-              focusable: true
-              bordered: true
-              enabled: root.editable
-              foreground: root.foreground
-              Accessible.role: Accessible.Button
-              Accessible.name: "Remove keyword " + (keywordRow.index + 1)
-              Accessible.onPressAction: root.keywordRemoved(keywordRow.index)
-              onClicked: root.keywordRemoved(keywordRow.index)
-            }
-          }
-        }
-
-        Row {
-          width: parent.width
-          spacing: Style.spacing.sm
-
-          TextField {
-            id: keywordInput
-            width: Math.max(1, parent.width - addKeywordButton.width - parent.spacing)
-            placeholderText: "Add a keyword"
-            enabled: root.editable
-            foreground: root.foreground
-            font.family: root.fontFamily
-            activeFocusOnTab: true
-            Accessible.role: Accessible.EditableText
-            Accessible.name: "Add keyword"
-            onAccepted: root.addKeyword()
-          }
-
-          Button {
-            id: addKeywordButton
-            text: "Add"
-            focusable: true
-            bordered: true
-            enabled: root.editable && keywordInput.text.trim().length > 0
-            foreground: root.foreground
-            Accessible.role: Accessible.Button
-            Accessible.name: "Add keyword"
-            Accessible.onPressAction: root.addKeyword()
-            onClicked: root.addKeyword()
-          }
-        }
-      }
-
-      Text {
-        width: parent.width
-        visible: text.length > 0
-        text: root.fieldErrors.keywords || ""
         textFormat: Text.PlainText
         color: Color.urgent
         font.family: root.fontFamily

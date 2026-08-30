@@ -11,7 +11,6 @@ function validRecord(overrides = {}) {
   return {
     id: ID_ONE,
     title: "Support email",
-    keywords: ["support", "email"],
     content: "support@example.com",
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
@@ -32,37 +31,17 @@ test("parseCatalog preserves exact Unicode, multiline, and CRLF content", () => 
   assert.equal(result.value.snippets[0].content, content)
 })
 
-test("parseCatalog normalizes titles and case-insensitively deduplicates keywords", () => {
+test("parseCatalog normalizes titles", () => {
   const result = SnippetCatalog.parseCatalog(
     validDocument([
       validRecord({
         title: "  Support email  ",
-        keywords: [" Support ", "support", "", "EMAIL", "email"],
       }),
     ])
   )
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets[0].title, "Support email")
-  assert.deepEqual(result.value.snippets[0].keywords, ["Support", "EMAIL"])
-})
-
-test("parseCatalog preserves keywords named after Object prototype properties", () => {
-  const result = SnippetCatalog.parseCatalog(
-    validDocument([
-      validRecord({
-        keywords: ["constructor", "toString", "__proto__", "valueOf"],
-      }),
-    ])
-  )
-
-  assert.equal(result.ok, true)
-  assert.deepEqual(result.value.snippets[0].keywords, [
-    "constructor",
-    "toString",
-    "__proto__",
-    "valueOf",
-  ])
 })
 
 test("parseCatalog ignores unknown document and record fields", () => {
@@ -79,7 +58,6 @@ test("parseCatalog ignores unknown document and record fields", () => {
   assert.deepEqual(Object.keys(result.value.snippets[0]), [
     "id",
     "title",
-    "keywords",
     "content",
     "createdAt",
     "updatedAt",
@@ -217,16 +195,11 @@ test("parseCatalog rejects content containing only JavaScript whitespace", () =>
   assert.equal(byteOrderMark.error.code, "INVALID_CATALOG")
 })
 
-test("parseCatalog rejects non-string keywords and invalid timestamps", () => {
-  const keywordResult = SnippetCatalog.parseCatalog(
-    validDocument([validRecord({ keywords: ["valid", 42] })])
-  )
+test("parseCatalog rejects invalid timestamps", () => {
   const timestampResult = SnippetCatalog.parseCatalog(
     validDocument([validRecord({ updatedAt: "2026-99-99T12:00:00.000Z" })])
   )
 
-  assert.equal(keywordResult.ok, false)
-  assert.equal(keywordResult.error.code, "INVALID_CATALOG")
   assert.equal(timestampResult.ok, false)
   assert.equal(timestampResult.error.code, "INVALID_CATALOG")
 })
@@ -249,9 +222,7 @@ test("parseCatalog rejects impossible, out-of-range, and hour-24 timestamps", ()
 })
 
 test("serializeCatalog emits deterministic pretty JSON with one trailing newline", () => {
-  const parsed = SnippetCatalog.parseCatalog(
-    validDocument([validRecord({ keywords: [" Support ", "support"] })])
-  )
+  const parsed = SnippetCatalog.parseCatalog(validDocument())
   assert.equal(parsed.ok, true)
 
   const result = SnippetCatalog.serializeCatalog(parsed.value)
@@ -314,7 +285,6 @@ test("createSnippet validates, normalizes, and appends without mutating the cata
     catalog,
     {
       title: "  Personal email  ",
-      keywords: [" Email ", "email", "personal"],
       content: "me@example.com\n",
     },
     ID_TWO,
@@ -326,7 +296,6 @@ test("createSnippet validates, normalizes, and appends without mutating the cata
   assert.deepEqual(result.value.snippets[1], {
     id: ID_TWO,
     title: "Personal email",
-    keywords: ["Email", "personal"],
     content: "me@example.com\n",
     createdAt: "2026-08-28T13:00:00.000Z",
     updatedAt: "2026-08-28T13:00:00.000Z",
@@ -348,7 +317,6 @@ test("createSnippet allows duplicate titles and content", () => {
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets.length, 2)
-  assert.deepEqual(result.value.snippets[1].keywords, [])
 })
 
 test("createSnippet rejects invalid input, identity, timestamp, and capacity", () => {
@@ -428,7 +396,6 @@ test("updateSnippet changes editable fields and preserves identity and creation 
     ID_ONE,
     {
       title: "  Updated support  ",
-      keywords: [],
       content: "updated@example.com",
     },
     "2026-08-28T14:00:00.000Z"
@@ -439,7 +406,6 @@ test("updateSnippet changes editable fields and preserves identity and creation 
   assert.deepEqual(result.value.snippets[0], {
     id: ID_ONE,
     title: "Updated support",
-    keywords: [],
     content: "updated@example.com",
     createdAt: CREATED_AT,
     updatedAt: "2026-08-28T14:00:00.000Z",
@@ -452,13 +418,12 @@ test("updateSnippet treats undefined fields as omitted", () => {
   const result = SnippetCatalog.updateSnippet(
     catalog,
     ID_ONE,
-    { title: "New title", keywords: undefined, content: undefined },
+    { title: "New title", content: undefined },
     "2026-08-28T14:00:00.000Z"
   )
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets[0].title, "New title")
-  assert.deepEqual(result.value.snippets[0].keywords, ["support", "email"])
   assert.equal(result.value.snippets[0].content, "support@example.com")
 })
 
@@ -471,7 +436,6 @@ test("updateSnippet leaves updatedAt unchanged when editable values do not chang
     ID_ONE,
     {
       title: "  Support email  ",
-      keywords: ["support", "email", "SUPPORT"],
       content: "support@example.com",
       ignored: true,
     },
@@ -496,7 +460,6 @@ test("updateSnippet supports partial changes", () => {
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets[0].title, "New title")
-  assert.deepEqual(result.value.snippets[0].keywords, ["support", "email"])
   assert.equal(result.value.snippets[0].content, "support@example.com")
 })
 

@@ -36,7 +36,7 @@ case "$isolated_data" in
   *) printf 'Refusing unsafe runtime data path\n' >&2; exit 1 ;;
 esac
 
-fixture=$'{\n  "schemaVersion": 1,\n  "snippets": [\n    {\n      "id": "550e8400-e29b-41d4-a716-446655440000",\n      "title": "Support email",\n      "keywords": [\n        "support"\n      ],\n      "content": "Exact 👋\\r\\nmultiline\\n",\n      "createdAt": "2026-08-29T12:00:00.000Z",\n      "updatedAt": "2026-08-29T12:00:00.000Z"\n    }\n  ]\n}\n'
+fixture=$'{\n  "schemaVersion": 1,\n  "snippets": [\n    {\n      "id": "550e8400-e29b-41d4-a716-446655440000",\n      "title": "Support email",\n      "content": "Exact 👋\\r\\nmultiline\\n",\n      "createdAt": "2026-08-29T12:00:00.000Z",\n      "updatedAt": "2026-08-29T12:00:00.000Z"\n    }\n  ]\n}\n'
 printf '%s' "$fixture" | HOME="$isolated_home" XDG_DATA_HOME="$isolated_data" "$ROOT_DIR/bin/snippet-store" write
 
 fake_transfer="$TEST_ROOT/fake-transfer"
@@ -114,7 +114,6 @@ ShellRoot {
         }
         phase = 3
         snippets.applyEvent({ type: "UPDATE_DRAFT", field: "title", value: "Created in runtime" })
-        snippets.applyEvent({ type: "ADD_KEYWORD", value: "comma,value" })
         snippets.applyEvent({ type: "UPDATE_DRAFT", field: "content", value: "Runtime 👋\ncontent" })
         snippets.applyEvent({ type: "SUBMIT_CREATE" })
       } else if (phase === 3) {

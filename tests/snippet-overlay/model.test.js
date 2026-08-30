@@ -11,7 +11,6 @@ function snippet(index, overrides = {}) {
   return {
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     title: `Snippet ${index}`,
-    keywords: [],
     content: `Content ${index}`,
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
@@ -131,8 +130,7 @@ test("SET_QUERY delegates ranking to the catalog and selects the first result", 
     snippet(1, { title: "Support reply", content: "Hello customer" }),
     snippet(2, {
       title: "Greeting",
-      keywords: ["support"],
-      content: "Hello customer",
+      content: "Support hello customer",
     }),
     snippet(3, { title: "Other", content: "No match" }),
   ])
@@ -294,7 +292,7 @@ test("OPEN_CREATE starts an empty draft and cancel restores query and selection"
   const canceled = transition(opened.state, { type: "CANCEL_EDITOR" })
 
   assert.equal(opened.state.mode, "create")
-  assert.deepEqual(opened.state.draft, { title: "", keywords: [], content: "" })
+  assert.deepEqual(opened.state.draft, { title: "", content: "" })
   assert.deepEqual(opened.state.returnSearch, {
     query: "content",
     selectedId: selected.selectedId,
@@ -306,7 +304,7 @@ test("OPEN_CREATE starts an empty draft and cancel restores query and selection"
   assert.deepEqual(canceled.effects, [])
 })
 
-test("create drafts update fields and preserve individual delimiter-bearing keywords", () => {
+test("create drafts update title and content without mutating prior state", () => {
   const create = transition(loaded([]), { type: "OPEN_CREATE" }).state
   const original = structuredClone(create)
 
@@ -320,28 +318,10 @@ test("create drafts update fields and preserve individual delimiter-bearing keyw
     field: "content",
     value: "Line 1\nLine 2 👋",
   }).state
-  const firstKeyword = transition(content, {
-    type: "ADD_KEYWORD",
-    value: "comma,value",
-  }).state
-  const secondKeyword = transition(firstKeyword, {
-    type: "ADD_KEYWORD",
-    value: "second",
-  }).state
-  const editedKeyword = transition(secondKeyword, {
-    type: "UPDATE_KEYWORD",
-    index: 1,
-    value: "new\nvalue",
-  }).state
-  const removedKeyword = transition(editedKeyword, {
-    type: "REMOVE_KEYWORD",
-    index: 0,
-  }).state
 
   assert.deepEqual(create, original)
-  assert.equal(removedKeyword.draft.title, "Title")
-  assert.equal(removedKeyword.draft.content, "Line 1\nLine 2 👋")
-  assert.deepEqual(removedKeyword.draft.keywords, ["new\nvalue"])
+  assert.equal(content.draft.title, "Title")
+  assert.equal(content.draft.content, "Line 1\nLine 2 👋")
 })
 
 test("SUBMIT_CREATE suppresses duplicates while requesting one kernel identity", () => {
@@ -423,10 +403,6 @@ test("valid create schedules canonical store bytes without committing memory", (
     value: "  New title  ",
   }).state
   state = transition(state, {
-    type: "ADD_KEYWORD",
-    value: " comma,value ",
-  }).state
-  state = transition(state, {
     type: "UPDATE_DRAFT",
     field: "content",
     value: "Exact\r\ncontent 👋",
@@ -446,7 +422,6 @@ test("valid create schedules canonical store bytes without committing memory", (
   assert.equal(prepared.effects[0].payload.endsWith("\n"), true)
   const parsed = JSON.parse(prepared.effects[0].payload)
   assert.equal(parsed.snippets[0].title, "New title")
-  assert.deepEqual(parsed.snippets[0].keywords, ["comma,value"])
   assert.equal(parsed.snippets[0].content, "Exact\r\ncontent 👋")
   assert.deepEqual(OverlayModel.processCommand(prepared.effects[0], "/store"), ["/store", "write"])
 })
@@ -519,7 +494,6 @@ test("OPEN_EDIT loads the selected stable ID and cancel restores search", () => 
   const source = loaded([
     snippet(1, {
       title: "Original",
-      keywords: ["comma,value", "second"],
       content: "Line 1\r\nLine 2",
     }),
   ])
@@ -531,7 +505,6 @@ test("OPEN_EDIT loads the selected stable ID and cancel restores search", () => 
   assert.equal(opened.state.targetId, snippet(1).id)
   assert.deepEqual(opened.state.draft, {
     title: "Original",
-    keywords: ["comma,value", "second"],
     content: "Line 1\r\nLine 2",
   })
   assert.equal(canceled.state.mode, "search")
@@ -567,17 +540,12 @@ test("SUBMIT_EDIT validates fields and preserves the draft", () => {
 })
 
 test("changed edit schedules canonical bytes without committing memory", () => {
-  const original = snippet(1, { keywords: ["comma,value"] })
+  const original = snippet(1)
   let state = transition(loaded([original]), { type: "OPEN_EDIT" }).state
   state = transition(state, {
     type: "UPDATE_DRAFT",
     field: "title",
     value: " Updated ",
-  }).state
-  state = transition(state, {
-    type: "UPDATE_KEYWORD",
-    index: 0,
-    value: "comma,value",
   }).state
   state = transition(state, {
     type: "UPDATE_DRAFT",
@@ -597,12 +565,11 @@ test("changed edit schedules canonical bytes without committing memory", () => {
   assert.equal(prepared.effects[0].type, "WRITE_STORE")
   const serialized = JSON.parse(prepared.effects[0].payload)
   assert.equal(serialized.snippets[0].title, "Updated")
-  assert.deepEqual(serialized.snippets[0].keywords, ["comma,value"])
   assert.equal(serialized.snippets[0].updatedAt, "2026-08-29T13:00:00.000Z")
 })
 
 test("normalization-equivalent edit succeeds without a store write", () => {
-  let state = transition(loaded([snippet(1, { title: "Original", keywords: ["one"] })]), {
+  let state = transition(loaded([snippet(1, { title: "Original" })]), {
     type: "OPEN_EDIT",
   }).state
   state = transition(state, {
@@ -610,8 +577,6 @@ test("normalization-equivalent edit succeeds without a store write", () => {
     field: "title",
     value: "  Original  ",
   }).state
-  state = transition(state, { type: "ADD_KEYWORD", value: "ONE" }).state
-
   const result = transition(state, {
     type: "SUBMIT_EDIT",
     now: "2026-08-29T13:00:00.000Z",
@@ -1037,15 +1002,14 @@ test("shortcutHints name every approved search action", () => {
   assert.match(hints, /Copy/)
 })
 
-test("resultAccessibleName uses title and keywords without snippet content", () => {
+test("resultAccessibleName uses title without snippet content", () => {
   const named = OverlayModel.resultAccessibleName({
     title: "Support email",
-    keywords: ["help,desk", "support"],
     content: "secret-token",
   })
   const untitled = OverlayModel.resultAccessibleName(null)
 
-  assert.equal(named, "Support email — help,desk · support")
+  assert.equal(named, "Support email")
   assert.equal(named.includes("secret-token"), false)
   assert.equal(untitled, "")
 })

@@ -178,12 +178,7 @@ Item {
 
               Text {
                 width: parent.width
-                text: OverlayModel.previewText(
-                  ((resultRow.modelData.keywords && resultRow.modelData.keywords.length > 0)
-                    ? resultRow.modelData.keywords.join(" · ") + " — "
-                    : "")
-                    + resultRow.modelData.content,
-                  100)
+                text: OverlayModel.previewText(resultRow.modelData.content, 100)
                 textFormat: Text.PlainText
                 color: resultRow.hasCursor ? root.selectedText : root.foreground
                 opacity: 0.65
@@ -253,18 +248,6 @@ Item {
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.heading
-                wrapMode: Text.Wrap
-              }
-
-              Text {
-                width: parent.width
-                text: root.selectedSnippet() ? root.selectedSnippet().keywords.join(" · ") : ""
-                textFormat: Text.PlainText
-                visible: text.length > 0
-                color: root.foreground
-                opacity: 0.6
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
                 wrapMode: Text.Wrap
               }
 

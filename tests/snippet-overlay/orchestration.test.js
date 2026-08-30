@@ -14,7 +14,6 @@ function validCatalog() {
       {
         id: ID,
         title: "Support email",
-        keywords: ["support"],
         content: "support@example.com",
         createdAt: TIMESTAMP,
         updatedAt: TIMESTAMP,

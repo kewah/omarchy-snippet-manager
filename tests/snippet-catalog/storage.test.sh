@@ -33,7 +33,7 @@ catalog() {
   jq -n \
     --arg id "$id" \
     --arg title "$title" \
-    '{schemaVersion:1,snippets:[{id:$id,title:$title,keywords:["test"],content:"Exact\r\nUnicode 👋\n",createdAt:"2026-08-28T12:00:00.000Z",updatedAt:"2026-08-28T12:00:00.000Z"}]}'
+    '{schemaVersion:1,snippets:[{id:$id,title:$title,content:"Exact\r\nUnicode 👋\n",createdAt:"2026-08-28T12:00:00.000Z",updatedAt:"2026-08-28T12:00:00.000Z"}]}'
 }
 
 run_store() {
@@ -124,7 +124,7 @@ assert_equal "Invalid snippet catalog" "$catalog_error" "invalid catalog error"
 pass "structurally invalid catalog input fails distinctly"
 
 oversized_catalog="$TEST_ROOT/oversized.json"
-printf '%s' '{"schemaVersion":1,"snippets":[{"id":"550e8400-e29b-41d4-a716-446655440000","title":"Large","keywords":[],"content":"' >"$oversized_catalog"
+printf '%s' '{"schemaVersion":1,"snippets":[{"id":"550e8400-e29b-41d4-a716-446655440000","title":"Large","content":"' >"$oversized_catalog"
 head -c 10485761 /dev/zero | tr '\0' x >>"$oversized_catalog"
 printf '%s\n' '","createdAt":"2026-08-28T12:00:00.000Z","updatedAt":"2026-08-28T12:00:00.000Z"}]}' >>"$oversized_catalog"
 set +e
@@ -258,7 +258,6 @@ CATALOG_MODULE="$ROOT_DIR/lib/SnippetCatalog.js" node -e '
   const snippets = Array.from({ length: 499 }, (_, index) => ({
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     title: `Snippet ${index}`,
-    keywords: index % 2 ? ["odd"] : ["even", "shared"],
     content: `Content ${index}`,
     createdAt: timestamp,
     updatedAt: timestamp

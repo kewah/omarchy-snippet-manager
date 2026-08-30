@@ -10,7 +10,6 @@ function record(index, overrides = {}) {
   return {
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     title: `Snippet ${index}`,
-    keywords: [],
     content: `Content ${index}`,
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
@@ -35,26 +34,23 @@ test("searchSnippets rejects non-string queries except null and undefined", () =
   assert.equal(undefinedQuery.ok, true)
 })
 
-test("searchSnippets requires every query token to match across searchable fields", () => {
+test("searchSnippets requires every query token to match across title and content", () => {
   const source = catalog([
     record(1, {
       title: "Support reply",
-      keywords: ["customer"],
       content: "Hello there",
     }),
     record(2, {
       title: "Support reply",
-      keywords: ["internal"],
       content: "Escalate only",
     }),
     record(3, {
       title: "Greeting",
-      keywords: ["customer"],
       content: "Hello there",
     }),
   ])
 
-  const result = SnippetCatalog.searchSnippets(source, "support customer hello")
+  const result = SnippetCatalog.searchSnippets(source, "support hello")
 
   assert.equal(result.ok, true)
   assert.deepEqual(
@@ -67,8 +63,7 @@ test("searchSnippets is case-insensitive and tokenizes runs of whitespace", () =
   const source = catalog([
     record(1, {
       title: "Résumé Reply",
-      keywords: ["CAFÉ"],
-      content: "À bientôt",
+      content: "CAFÉ à bientôt",
     }),
   ])
 
@@ -81,11 +76,10 @@ test("searchSnippets is case-insensitive and tokenizes runs of whitespace", () =
   )
 })
 
-test("searchSnippets ranks title matches above keywords above content", () => {
+test("searchSnippets ranks title matches above content", () => {
   const source = catalog([
     record(1, { title: "Alpha", content: "target" }),
-    record(2, { title: "Alpha", keywords: ["target"] }),
-    record(3, { title: "Target title" }),
+    record(2, { title: "Target title" }),
   ])
 
   const result = SnippetCatalog.searchSnippets(source, "target")
@@ -93,7 +87,7 @@ test("searchSnippets ranks title matches above keywords above content", () => {
   assert.equal(result.ok, true)
   assert.deepEqual(
     result.value.map((snippet) => snippet.id),
-    [record(3).id, record(2).id, record(1).id]
+    [record(2).id, record(1).id]
   )
 })
 
@@ -101,7 +95,6 @@ test("searchSnippets counts only the highest-weight field for each token", () =>
   const source = catalog([
     record(1, {
       title: "Target zebra",
-      keywords: ["target"],
       content: "target",
     }),
     record(2, { title: "Target alpha" }),
@@ -174,7 +167,6 @@ test("searchSnippets returns detached records and does not mutate the catalog", 
   assert.equal(result.ok, true)
   assert.deepEqual(source, original)
   assert.notEqual(result.value[0], source.snippets[0])
-  assert.notEqual(result.value[0].keywords, source.snippets[0].keywords)
 })
 
 test("searchSnippets rejects an invalid catalog", () => {
@@ -188,8 +180,7 @@ test("searchSnippets completes a representative 499-record query within 50 ms", 
   const snippets = Array.from({ length: 499 }, (_, index) =>
     record(index, {
       title: `Reusable response ${index}`,
-      keywords: index % 10 === 0 ? ["support", "customer"] : ["general"],
-      content: `Hello customer, this is multiline response ${index}.\nRegards.`,
+      content: `${index % 10 === 0 ? "Support" : "General"} customer response ${index}.\nRegards.`,
     })
   )
   const source = catalog(snippets)

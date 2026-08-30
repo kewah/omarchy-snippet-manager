@@ -39,7 +39,7 @@ case "$isolated_data" in
 esac
 
 if [[ ! -f $isolated_data/omarchy-snippets/snippets.json ]]; then
-  fixture=$'{\n  "schemaVersion": 1,\n  "snippets": [\n    {\n      "id": "550e8400-e29b-41d4-a716-446655440000",\n      "title": "Support email",\n      "keywords": [\n        "support"\n      ],\n      "content": "Exact 👋\\r\\nmultiline\\n",\n      "createdAt": "2026-08-29T12:00:00.000Z",\n      "updatedAt": "2026-08-29T12:00:00.000Z"\n    }\n  ]\n}\n'
+  fixture=$'{\n  "schemaVersion": 1,\n  "snippets": [\n    {\n      "id": "550e8400-e29b-41d4-a716-446655440000",\n      "title": "Support email",\n      "content": "Exact 👋\\r\\nmultiline\\n",\n      "createdAt": "2026-08-29T12:00:00.000Z",\n      "updatedAt": "2026-08-29T12:00:00.000Z"\n    }\n  ]\n}\n'
   printf '%s' "$fixture" | HOME="$isolated_home" XDG_DATA_HOME="$isolated_data" "$ROOT_DIR/bin/snippet-store" write
 fi
 
@@ -62,8 +62,8 @@ ShellRoot {
 QML
 
 printf '%s\n' \
-  "Interactive snippet overlay (disposable catalog, not your real snippets)." \
-  "Escape or Enter closes the overlay. Run this script again to reopen." \
+  "Interactive snippet overlay (disposable catalog; transfer actions use your real clipboard and keyboard)." \
+  "Escape closes without transfer. Enter pastes; Ctrl+Enter copies. Run this script again to reopen." \
   "Ctrl+C in this terminal stops Quickshell." \
   "Catalog: $isolated_data/omarchy-snippets/snippets.json"
 
@@ -74,4 +74,5 @@ XDG_STATE_HOME="$isolated_state" \
 XDG_CACHE_HOME="$isolated_cache" \
 OMARCHY_PATH=/usr/share/omarchy \
 SNIPPET_STORE_PATH="$ROOT_DIR/bin/snippet-store" \
+SNIPPET_TRANSFER_PATH="$ROOT_DIR/bin/snippet-transfer" \
 qs -p "$harness/shell.qml"

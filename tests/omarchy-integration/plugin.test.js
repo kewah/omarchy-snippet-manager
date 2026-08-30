@@ -99,6 +99,13 @@ test("installed overlay resolves helpers from sourceDir without harness env vars
   assert.equal(fs.existsSync(path.join(ROOT, "bin/snippet-transfer")), true)
 })
 
+test("manual harness provides helper paths without a plugin manifest", () => {
+  const source = fs.readFileSync(path.join(ROOT, "tests/snippet-overlay/manual-harness.sh"), "utf8")
+
+  assert.equal(source.includes('SNIPPET_STORE_PATH="$ROOT_DIR/bin/snippet-store"'), true)
+  assert.equal(source.includes('SNIPPET_TRANSFER_PATH="$ROOT_DIR/bin/snippet-transfer"'), true)
+})
+
 test("install helper documents local enable and native toggle", () => {
   const result = spawnSync("bash", [path.join(ROOT, "bin/snippet-install"), "--help"], {
     encoding: "utf8",

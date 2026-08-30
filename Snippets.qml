@@ -550,7 +550,7 @@ Item {
         anchors.leftMargin: card.contentLeftInset
         visible: root.overlayState.mode === "create" || root.overlayState.mode === "edit"
         editorMode: root.overlayState.mode
-        draft: root.overlayState.draft || ({ title: "", keywords: [], content: "" })
+        draft: root.overlayState.draft || ({ title: "", content: "" })
         fieldErrors: root.overlayState.fieldErrors || ({})
         focusField: root.overlayState.focusField
         errorMessage: root.overlayState.errorMessage
@@ -560,15 +560,6 @@ Item {
         background: root.background
         onFieldChanged: function(field, value) {
           root.applyEvent({ type: "UPDATE_DRAFT", field: field, value: value })
-        }
-        onKeywordAdded: function(value) {
-          root.applyEvent({ type: "ADD_KEYWORD", value: value })
-        }
-        onKeywordChanged: function(index, value) {
-          root.applyEvent({ type: "UPDATE_KEYWORD", index: index, value: value })
-        }
-        onKeywordRemoved: function(index) {
-          root.applyEvent({ type: "REMOVE_KEYWORD", index: index })
         }
         onSaveRequested: {
           if (root.overlayState.mode === "edit") {

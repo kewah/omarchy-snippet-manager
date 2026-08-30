@@ -106,8 +106,6 @@ validate_file() {
       and (.id | test("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"; "i"))
       and ((.title | type) == "string")
       and (.title | js_trim | length >= 1 and length <= 120)
-      and ((.keywords | type) == "array")
-      and all(.keywords[]; type == "string" and (js_trim | length > 0))
       and ((.content | type) == "string")
       and (.content | has_non_js_whitespace)
       and ((.createdAt | type) == "string")

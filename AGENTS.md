@@ -67,7 +67,7 @@ Formatting and ES5 syntax in `lib/` are owned by Prettier and ESLint (`npm run l
 - Do not add `hl.unbind(...)` or steal Super+X clipboard binds. The locked bind is `SUPER + CTRL + M`.
 - Plugin `manifest.json` `id` must stay `kewah.snippet-manager` (must not start with `omarchy.`).
 - Catalog on disk is schemaVersion `1` only. Reject unknown schemas; do not silently migrate.
-- Preserve snippet `content` bytes exactly (Unicode, multiline, CRLF). Trim titles and keywords; do not trim content.
+- Preserve snippet `content` bytes exactly (Unicode, multiline, CRLF). Trim titles; do not trim content.
 - Never commit secrets or `.env` files.
 
 ## Patterns
