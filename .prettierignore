@@ -1,0 +1,11 @@
+package-lock.json
+*.qml
+*.sh
+*.lua
+*.jsonc
+.agents/
+docs/
+tasks/
+skills-lock.json
+CAPABILITY-MAP.md
+SPEC-*.md

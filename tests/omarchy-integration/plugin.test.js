@@ -8,13 +8,14 @@ const ROOT = path.join(__dirname, "../..")
 const MANIFEST_PATH = path.join(ROOT, "manifest.json")
 const PLUGIN_ID = "kewah.snippet-manager"
 const TOGGLE_COMMAND = "omarchy-shell shell toggle kewah.snippet-manager"
-const BIND_LINE = 'o.bind("SUPER + CTRL + M", "Snippets", "omarchy-shell shell toggle kewah.snippet-manager")'
+const BIND_LINE =
+  'o.bind("SUPER + CTRL + M", "Snippets", "omarchy-shell shell toggle kewah.snippet-manager")'
 const MENU_FRAGMENT_PATH = path.join(ROOT, "contrib/omarchy-menu-snippets.jsonc")
 const BIND_FRAGMENT_PATH = path.join(ROOT, "contrib/bindings-snippets.lua")
 const STOLEN_UNBINDS = [
   'hl.unbind("SUPER + X")',
   'hl.unbind("SUPER + CTRL + X")',
-  'hl.unbind("SUPER + SHIFT + X")'
+  'hl.unbind("SUPER + SHIFT + X")',
 ]
 
 function readJson(filePath) {
@@ -25,7 +26,7 @@ function fileSymlinks(dir) {
   const found = []
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   for (const entry of entries) {
-    if (entry.name === ".git") continue
+    if (entry.name === ".git" || entry.name === "node_modules") continue
     const full = path.join(dir, entry.name)
     if (entry.isSymbolicLink()) {
       found.push(full)
@@ -56,9 +57,9 @@ test("manifest.json declares the locked overlay plugin contract", () => {
   assert.equal(fs.existsSync(path.join(ROOT, "Snippets.qml")), true)
 })
 
-test("omarchy plugin validate accepts the repository root", () => {
-  const result = spawnSync("omarchy", ["plugin", "validate", ROOT], {
-    encoding: "utf8"
+test("omarchy plugin validate accepts the plugin tree without node_modules", () => {
+  const result = spawnSync("node", [path.join(ROOT, "scripts/validate-plugin.js")], {
+    encoding: "utf8",
   })
   assert.equal(result.status, 0, result.stderr || result.stdout)
 })
@@ -100,11 +101,11 @@ test("installed overlay resolves helpers from sourceDir without harness env vars
 
 test("install helper documents local enable and native toggle", () => {
   const result = spawnSync("bash", [path.join(ROOT, "bin/snippet-install"), "--help"], {
-    encoding: "utf8"
+    encoding: "utf8",
   })
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout.includes("omarchy plugin enable kewah.snippet-manager"), true)
-  assert.equal(result.stdout.includes("omarchy plugin validate ."), true)
+  assert.equal(result.stdout.includes("npm run validate"), true)
   assert.equal(result.stdout.includes("omarchy-shell shell rescanPlugins"), true)
   assert.equal(result.stdout.includes("directory symlink"), true)
   assert.equal(result.stdout.includes("/usr/share/omarchy"), true)

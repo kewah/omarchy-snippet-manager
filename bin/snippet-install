@@ -9,7 +9,7 @@
 #
 # Local enable, after a directory symlink at
 # ~/.config/omarchy/plugins/kewah.snippet-manager/:
-#   omarchy plugin validate .
+#   npm run validate
 #   omarchy-shell shell rescanPlugins
 #   omarchy plugin enable kewah.snippet-manager
 
@@ -44,7 +44,7 @@ Example:
 Does not call omarchy plugin enable. Does not write /usr/share/omarchy/.
 After placing this checkout at ~/.config/omarchy/plugins/kewah.snippet-manager/
 (directory symlink allowed):
-  omarchy plugin validate .
+  npm run validate
   omarchy-shell shell rescanPlugins
   omarchy plugin enable kewah.snippet-manager
 EOF
