@@ -12,7 +12,7 @@ const MULTILINE = "Exact\r\nUnicode 👋\nline"
 function payload(kind, content) {
   return {
     kind: kind,
-    snippet: { id: ID, content: content }
+    snippet: { id: ID, content: content },
   }
 }
 
@@ -41,10 +41,13 @@ test("Unicode, newlines, and CRLF survive as exact stdin bytes", () => {
 test("invalid kind, missing snippet, and non-string content are INVALID_TRANSFER", () => {
   const cases = [
     Transfer.transferPlan(null),
-    Transfer.transferPlan({ kind: "EXECUTE", snippet: { id: ID, content: CONTENT } }),
+    Transfer.transferPlan({
+      kind: "EXECUTE",
+      snippet: { id: ID, content: CONTENT },
+    }),
     Transfer.transferPlan({ kind: "PASTE" }),
     Transfer.transferPlan({ kind: "PASTE", snippet: { id: ID } }),
-    Transfer.transferPlan({ kind: "COPY", snippet: { id: ID, content: 12 } })
+    Transfer.transferPlan({ kind: "COPY", snippet: { id: ID, content: 12 } }),
   ]
 
   for (const result of cases) {
@@ -59,7 +62,7 @@ test("errors never include snippet content", () => {
   const secret = "super-secret-snippet-body"
   const result = Transfer.transferPlan({
     kind: "EXECUTE",
-    snippet: { id: ID, content: secret }
+    snippet: { id: ID, content: secret },
   })
   assert.equal(result.ok, false)
   assert.equal(JSON.stringify(result).includes(secret), false)
@@ -79,10 +82,10 @@ test("helperCommand uses helper path and allowlisted verb only", () => {
   assert.equal(command.join(" ").includes(MULTILINE), false)
 
   const copy = Transfer.transferPlan(payload("COPY", CONTENT))
-  assert.deepEqual(
-    Transfer.helperCommand("/plugin/bin/snippet-transfer", copy.value),
-    ["/plugin/bin/snippet-transfer", "copy"]
-  )
+  assert.deepEqual(Transfer.helperCommand("/plugin/bin/snippet-transfer", copy.value), [
+    "/plugin/bin/snippet-transfer",
+    "copy",
+  ])
 })
 
 test("toastCommand uses allowlisted text and never snippet content", () => {
@@ -105,6 +108,12 @@ test("helperCommand is a no-op without a valid path or plan", () => {
   const plan = Transfer.transferPlan(payload("PASTE", CONTENT))
   assert.equal(Transfer.helperCommand("", plan.value), null)
   assert.equal(Transfer.helperCommand("/plugin/bin/snippet-transfer", null), null)
-  assert.equal(Transfer.helperCommand("/plugin/bin/snippet-transfer", { argv: ["explode"], stdin: CONTENT }), null)
+  assert.equal(
+    Transfer.helperCommand("/plugin/bin/snippet-transfer", {
+      argv: ["explode"],
+      stdin: CONTENT,
+    }),
+    null
+  )
   assert.equal(Transfer.helperCommand("/plugin/bin/snippet-transfer", { argv: ["paste"] }), null)
 })

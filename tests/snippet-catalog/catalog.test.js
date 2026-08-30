@@ -15,7 +15,7 @@ function validRecord(overrides = {}) {
     content: "support@example.com",
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -26,21 +26,21 @@ function validDocument(records = [validRecord()]) {
 test("parseCatalog preserves exact Unicode, multiline, and CRLF content", () => {
   const content = "Hello 👋\r\nSecond line\n"
 
-  const result = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ content })
-  ]))
+  const result = SnippetCatalog.parseCatalog(validDocument([validRecord({ content })]))
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets[0].content, content)
 })
 
 test("parseCatalog normalizes titles and case-insensitively deduplicates keywords", () => {
-  const result = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({
-      title: "  Support email  ",
-      keywords: [" Support ", "support", "", "EMAIL", "email"]
-    })
-  ]))
+  const result = SnippetCatalog.parseCatalog(
+    validDocument([
+      validRecord({
+        title: "  Support email  ",
+        keywords: [" Support ", "support", "", "EMAIL", "email"],
+      }),
+    ])
+  )
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets[0].title, "Support email")
@@ -48,13 +48,20 @@ test("parseCatalog normalizes titles and case-insensitively deduplicates keyword
 })
 
 test("parseCatalog preserves keywords named after Object prototype properties", () => {
-  const result = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ keywords: ["constructor", "toString", "__proto__", "valueOf"] })
-  ]))
+  const result = SnippetCatalog.parseCatalog(
+    validDocument([
+      validRecord({
+        keywords: ["constructor", "toString", "__proto__", "valueOf"],
+      }),
+    ])
+  )
 
   assert.equal(result.ok, true)
   assert.deepEqual(result.value.snippets[0].keywords, [
-    "constructor", "toString", "__proto__", "valueOf"
+    "constructor",
+    "toString",
+    "__proto__",
+    "valueOf",
   ])
 })
 
@@ -62,7 +69,7 @@ test("parseCatalog ignores unknown document and record fields", () => {
   const raw = JSON.stringify({
     schemaVersion: 1,
     futureDocumentField: true,
-    snippets: [validRecord({ futureRecordField: "ignored" })]
+    snippets: [validRecord({ futureRecordField: "ignored" })],
   })
 
   const result = SnippetCatalog.parseCatalog(raw)
@@ -70,7 +77,12 @@ test("parseCatalog ignores unknown document and record fields", () => {
   assert.equal(result.ok, true)
   assert.deepEqual(Object.keys(result.value), ["schemaVersion", "snippets"])
   assert.deepEqual(Object.keys(result.value.snippets[0]), [
-    "id", "title", "keywords", "content", "createdAt", "updatedAt"
+    "id",
+    "title",
+    "keywords",
+    "content",
+    "createdAt",
+    "updatedAt",
   ])
 })
 
@@ -85,26 +97,30 @@ test("parseCatalog reports malformed JSON without echoing input", () => {
 })
 
 test("parseCatalog rejects unsupported schema versions", () => {
-  const result = SnippetCatalog.parseCatalog(JSON.stringify({
-    schemaVersion: 2,
-    snippets: []
-  }))
+  const result = SnippetCatalog.parseCatalog(
+    JSON.stringify({
+      schemaVersion: 2,
+      snippets: [],
+    })
+  )
 
   assert.deepEqual(result, {
     ok: false,
     error: {
       code: "UNSUPPORTED_SCHEMA",
-      message: "Unsupported snippet catalog schema"
-    }
+      message: "Unsupported snippet catalog schema",
+    },
   })
 })
 
 test("parseCatalog validates schema version before snippets structure", () => {
   const unknownWithoutSnippets = SnippetCatalog.parseCatalog(JSON.stringify({ schemaVersion: 2 }))
-  const stringVersion = SnippetCatalog.parseCatalog(JSON.stringify({
-    schemaVersion: "1",
-    snippets: []
-  }))
+  const stringVersion = SnippetCatalog.parseCatalog(
+    JSON.stringify({
+      schemaVersion: "1",
+      snippets: [],
+    })
+  )
 
   assert.equal(unknownWithoutSnippets.ok, false)
   assert.equal(unknownWithoutSnippets.error.code, "UNSUPPORTED_SCHEMA")
@@ -120,9 +136,11 @@ test("parseCatalog rejects a non-object document", () => {
 })
 
 test("parseCatalog rejects 500 records because V1 supports fewer than 500", () => {
-  const records = Array.from({ length: 500 }, (_, index) => validRecord({
-    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`
-  }))
+  const records = Array.from({ length: 500 }, (_, index) =>
+    validRecord({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    })
+  )
 
   const result = SnippetCatalog.parseCatalog(validDocument(records))
 
@@ -131,14 +149,15 @@ test("parseCatalog rejects 500 records because V1 supports fewer than 500", () =
 })
 
 test("parseCatalog rejects duplicate stable IDs", () => {
-  const result = SnippetCatalog.parseCatalog(validDocument([
-    validRecord(),
-    validRecord({ title: "Another title" })
-  ]))
-  const mixedCase = SnippetCatalog.parseCatalog(validDocument([
-    validRecord(),
-    validRecord({ id: ID_ONE.toUpperCase(), title: "Another title" })
-  ]))
+  const result = SnippetCatalog.parseCatalog(
+    validDocument([validRecord(), validRecord({ title: "Another title" })])
+  )
+  const mixedCase = SnippetCatalog.parseCatalog(
+    validDocument([
+      validRecord(),
+      validRecord({ id: ID_ONE.toUpperCase(), title: "Another title" }),
+    ])
+  )
 
   assert.equal(result.ok, false)
   assert.equal(result.error.code, "INVALID_CATALOG")
@@ -148,9 +167,9 @@ test("parseCatalog rejects duplicate stable IDs", () => {
 
 test("parseCatalog accepts UUID v4 and rejects other UUID versions", () => {
   const v4 = SnippetCatalog.parseCatalog(validDocument())
-  const v7 = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ id: "01900000-0000-7000-8000-000000000001" })
-  ]))
+  const v7 = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ id: "01900000-0000-7000-8000-000000000001" })])
+  )
 
   assert.equal(v4.ok, true)
   assert.equal(v7.ok, false)
@@ -158,21 +177,17 @@ test("parseCatalog accepts UUID v4 and rejects other UUID versions", () => {
 })
 
 test("parseCatalog rejects invalid UUIDs", () => {
-  const result = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ id: "not-a-uuid" })
-  ]))
+  const result = SnippetCatalog.parseCatalog(validDocument([validRecord({ id: "not-a-uuid" })]))
 
   assert.equal(result.ok, false)
   assert.equal(result.error.code, "INVALID_CATALOG")
 })
 
 test("parseCatalog rejects empty and overlong titles", () => {
-  const empty = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ title: "   " })
-  ]))
-  const long = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ title: "😀".repeat(121) })
-  ]))
+  const empty = SnippetCatalog.parseCatalog(validDocument([validRecord({ title: "   " })]))
+  const long = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ title: "😀".repeat(121) })])
+  )
 
   assert.equal(empty.ok, false)
   assert.equal(empty.error.code, "INVALID_CATALOG")
@@ -181,20 +196,20 @@ test("parseCatalog rejects empty and overlong titles", () => {
 })
 
 test("parseCatalog counts a Unicode surrogate pair as one title character", () => {
-  const result = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ title: "😀".repeat(120) })
-  ]))
+  const result = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ title: "😀".repeat(120) })])
+  )
 
   assert.equal(result.ok, true)
 })
 
 test("parseCatalog rejects content containing only JavaScript whitespace", () => {
-  const ordinaryWhitespace = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ content: " \r\n\t" })
-  ]))
-  const byteOrderMark = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ content: "\uFEFF" })
-  ]))
+  const ordinaryWhitespace = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ content: " \r\n\t" })])
+  )
+  const byteOrderMark = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ content: "\uFEFF" })])
+  )
 
   assert.equal(ordinaryWhitespace.ok, false)
   assert.equal(ordinaryWhitespace.error.code, "INVALID_CATALOG")
@@ -203,12 +218,12 @@ test("parseCatalog rejects content containing only JavaScript whitespace", () =>
 })
 
 test("parseCatalog rejects non-string keywords and invalid timestamps", () => {
-  const keywordResult = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ keywords: ["valid", 42] })
-  ]))
-  const timestampResult = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ updatedAt: "2026-99-99T12:00:00.000Z" })
-  ]))
+  const keywordResult = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ keywords: ["valid", 42] })])
+  )
+  const timestampResult = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ updatedAt: "2026-99-99T12:00:00.000Z" })])
+  )
 
   assert.equal(keywordResult.ok, false)
   assert.equal(keywordResult.error.code, "INVALID_CATALOG")
@@ -217,15 +232,15 @@ test("parseCatalog rejects non-string keywords and invalid timestamps", () => {
 })
 
 test("parseCatalog rejects impossible, out-of-range, and hour-24 timestamps", () => {
-  const impossibleDate = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ updatedAt: "2026-02-29T12:00:00.000Z" })
-  ]))
-  const oldYear = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ updatedAt: "1969-12-31T23:59:59.999Z" })
-  ]))
-  const hour24 = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ updatedAt: "2026-08-28T24:00:00.000Z" })
-  ]))
+  const impossibleDate = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ updatedAt: "2026-02-29T12:00:00.000Z" })])
+  )
+  const oldYear = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ updatedAt: "1969-12-31T23:59:59.999Z" })])
+  )
+  const hour24 = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ updatedAt: "2026-08-28T24:00:00.000Z" })])
+  )
 
   for (const result of [impossibleDate, oldYear, hour24]) {
     assert.equal(result.ok, false)
@@ -234,9 +249,9 @@ test("parseCatalog rejects impossible, out-of-range, and hour-24 timestamps", ()
 })
 
 test("serializeCatalog emits deterministic pretty JSON with one trailing newline", () => {
-  const parsed = SnippetCatalog.parseCatalog(validDocument([
-    validRecord({ keywords: [" Support ", "support"] })
-  ]))
+  const parsed = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ keywords: [" Support ", "support"] })])
+  )
   assert.equal(parsed.ok, true)
 
   const result = SnippetCatalog.serializeCatalog(parsed.value)
@@ -248,7 +263,10 @@ test("serializeCatalog emits deterministic pretty JSON with one trailing newline
 
 test("catalog operations reject serialized data larger than 10 MiB", () => {
   const hugeContent = "x".repeat(10 * 1024 * 1024 + 1)
-  const oversized = { schemaVersion: 1, snippets: [validRecord({ content: hugeContent })] }
+  const oversized = {
+    schemaVersion: 1,
+    snippets: [validRecord({ content: hugeContent })],
+  }
 
   const parsed = SnippetCatalog.parseCatalog(JSON.stringify(oversized))
   const serialized = SnippetCatalog.serializeCatalog(oversized)
@@ -281,7 +299,7 @@ test("catalog operations reject serialized data larger than 10 MiB", () => {
 test("serializeCatalog rejects an invalid in-memory catalog", () => {
   const result = SnippetCatalog.serializeCatalog({
     schemaVersion: 1,
-    snippets: [validRecord({ id: ID_TWO, content: "" })]
+    snippets: [validRecord({ id: ID_TWO, content: "" })],
   })
 
   assert.equal(result.ok, false)
@@ -292,11 +310,16 @@ test("createSnippet validates, normalizes, and appends without mutating the cata
   const catalog = { schemaVersion: 1, snippets: [validRecord()] }
   const original = structuredClone(catalog)
 
-  const result = SnippetCatalog.createSnippet(catalog, {
-    title: "  Personal email  ",
-    keywords: [" Email ", "email", "personal"],
-    content: "me@example.com\n"
-  }, ID_TWO, "2026-08-28T13:00:00.000Z")
+  const result = SnippetCatalog.createSnippet(
+    catalog,
+    {
+      title: "  Personal email  ",
+      keywords: [" Email ", "email", "personal"],
+      content: "me@example.com\n",
+    },
+    ID_TWO,
+    "2026-08-28T13:00:00.000Z"
+  )
 
   assert.equal(result.ok, true)
   assert.deepEqual(catalog, original)
@@ -306,17 +329,22 @@ test("createSnippet validates, normalizes, and appends without mutating the cata
     keywords: ["Email", "personal"],
     content: "me@example.com\n",
     createdAt: "2026-08-28T13:00:00.000Z",
-    updatedAt: "2026-08-28T13:00:00.000Z"
+    updatedAt: "2026-08-28T13:00:00.000Z",
   })
 })
 
 test("createSnippet allows duplicate titles and content", () => {
   const catalog = { schemaVersion: 1, snippets: [validRecord()] }
 
-  const result = SnippetCatalog.createSnippet(catalog, {
-    title: "Support email",
-    content: "support@example.com"
-  }, ID_TWO, "2026-08-28T13:00:00.000Z")
+  const result = SnippetCatalog.createSnippet(
+    catalog,
+    {
+      title: "Support email",
+      content: "support@example.com",
+    },
+    ID_TWO,
+    "2026-08-28T13:00:00.000Z"
+  )
 
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets.length, 2)
@@ -344,9 +372,11 @@ test("createSnippet rejects invalid input, identity, timestamp, and capacity", (
   )
   const fullCatalog = {
     schemaVersion: 1,
-    snippets: Array.from({ length: 499 }, (_, index) => validRecord({
-      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`
-    }))
+    snippets: Array.from({ length: 499 }, (_, index) =>
+      validRecord({
+        id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      })
+    ),
   }
   const atCapacity = SnippetCatalog.createSnippet(
     fullCatalog,
@@ -365,10 +395,15 @@ test("createSnippet rejects invalid input, identity, timestamp, and capacity", (
 test("createSnippet rejects an existing ID case-insensitively", () => {
   const catalog = { schemaVersion: 1, snippets: [validRecord()] }
 
-  const result = SnippetCatalog.createSnippet(catalog, {
-    title: "Another",
-    content: "Another value"
-  }, ID_ONE.toUpperCase(), "2026-08-28T13:00:00.000Z")
+  const result = SnippetCatalog.createSnippet(
+    catalog,
+    {
+      title: "Another",
+      content: "Another value",
+    },
+    ID_ONE.toUpperCase(),
+    "2026-08-28T13:00:00.000Z"
+  )
 
   assert.equal(result.ok, false)
   assert.equal(result.error.code, "VALIDATION_ERROR")
@@ -388,11 +423,16 @@ test("updateSnippet changes editable fields and preserves identity and creation 
   const catalog = { schemaVersion: 1, snippets: [validRecord()] }
   const original = structuredClone(catalog)
 
-  const result = SnippetCatalog.updateSnippet(catalog, ID_ONE, {
-    title: "  Updated support  ",
-    keywords: [],
-    content: "updated@example.com"
-  }, "2026-08-28T14:00:00.000Z")
+  const result = SnippetCatalog.updateSnippet(
+    catalog,
+    ID_ONE,
+    {
+      title: "  Updated support  ",
+      keywords: [],
+      content: "updated@example.com",
+    },
+    "2026-08-28T14:00:00.000Z"
+  )
 
   assert.equal(result.ok, true)
   assert.deepEqual(catalog, original)
@@ -402,7 +442,7 @@ test("updateSnippet changes editable fields and preserves identity and creation 
     keywords: [],
     content: "updated@example.com",
     createdAt: CREATED_AT,
-    updatedAt: "2026-08-28T14:00:00.000Z"
+    updatedAt: "2026-08-28T14:00:00.000Z",
   })
 })
 
@@ -425,12 +465,7 @@ test("updateSnippet treats undefined fields as omitted", () => {
 test("updateSnippet leaves updatedAt unchanged when editable values do not change", () => {
   const catalog = { schemaVersion: 1, snippets: [validRecord()] }
 
-  const emptyResult = SnippetCatalog.updateSnippet(
-    catalog,
-    ID_ONE,
-    {},
-    "2026-08-28T14:00:00.000Z"
-  )
+  const emptyResult = SnippetCatalog.updateSnippet(catalog, ID_ONE, {}, "2026-08-28T14:00:00.000Z")
   const sameValuesResult = SnippetCatalog.updateSnippet(
     catalog,
     ID_ONE,
@@ -438,7 +473,7 @@ test("updateSnippet leaves updatedAt unchanged when editable values do not chang
       title: "  Support email  ",
       keywords: ["support", "email", "SUPPORT"],
       content: "support@example.com",
-      ignored: true
+      ignored: true,
     },
     "2026-08-28T14:00:00.000Z"
   )
@@ -471,7 +506,9 @@ test("updateSnippet rejects invalid changes without exposing content", () => {
   const result = SnippetCatalog.updateSnippet(
     catalog,
     ID_ONE,
-    { content: "secret-invalid-whitespace\n".replace("secret-invalid-whitespace", "   ") },
+    {
+      content: "secret-invalid-whitespace\n".replace("secret-invalid-whitespace", "   "),
+    },
     "2026-08-28T14:00:00.000Z"
   )
 
@@ -483,7 +520,7 @@ test("updateSnippet rejects invalid changes without exposing content", () => {
 test("deleteSnippet removes exactly one record without mutating the catalog", () => {
   const catalog = {
     schemaVersion: 1,
-    snippets: [validRecord(), validRecord({ id: ID_TWO, title: "Second" })]
+    snippets: [validRecord(), validRecord({ id: ID_TWO, title: "Second" })],
   }
   const original = structuredClone(catalog)
 
@@ -501,13 +538,13 @@ test("get, update, and delete return NOT_FOUND for an absent ID", () => {
   const results = [
     SnippetCatalog.getSnippet(catalog, missing),
     SnippetCatalog.updateSnippet(catalog, missing, { title: "Nope" }, CREATED_AT),
-    SnippetCatalog.deleteSnippet(catalog, missing)
+    SnippetCatalog.deleteSnippet(catalog, missing),
   ]
 
   for (const result of results) {
     assert.deepEqual(result, {
       ok: false,
-      error: { code: "NOT_FOUND", message: "Snippet not found" }
+      error: { code: "NOT_FOUND", message: "Snippet not found" },
     })
   }
 })

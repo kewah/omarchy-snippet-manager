@@ -6,7 +6,8 @@ const path = require("node:path")
 const Install = require("../../lib/OmarchyInstall.js")
 
 const TOGGLE_COMMAND = "omarchy-shell shell toggle kewah.snippet-manager"
-const BIND_LINE = 'o.bind("SUPER + CTRL + M", "Snippets", "omarchy-shell shell toggle kewah.snippet-manager")'
+const BIND_LINE =
+  'o.bind("SUPER + CTRL + M", "Snippets", "omarchy-shell shell toggle kewah.snippet-manager")'
 const QUICKLINKS_ACTION = "omarchy-launch-browser 'https://github.com/kewah?tab=repositories'"
 
 const MENU_WITH_QUICKLINKS = `{
@@ -93,7 +94,7 @@ test("mergeBind is a no-op when the exact snippets bind already exists", () => {
   assert.equal(second.ok, true)
   assert.equal(second.value.changed, false)
   assert.equal(second.value.text, first.value.text)
-  assert.equal((second.value.text.split(BIND_LINE).length - 1), 1)
+  assert.equal(second.value.text.split(BIND_LINE).length - 1, 1)
 })
 
 test("mergeBind never inserts stock unbinds", () => {
@@ -104,14 +105,10 @@ test("mergeBind never inserts stock unbinds", () => {
 })
 
 test("merge constants match the shipped bind and menu fragments", () => {
-  const menu = JSON.parse(fs.readFileSync(
-    path.join(__dirname, "../../contrib/omarchy-menu-snippets.jsonc"),
-    "utf8"
-  ))
-  const bind = fs.readFileSync(
-    path.join(__dirname, "../../contrib/bindings-snippets.lua"),
-    "utf8"
+  const menu = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "../../contrib/omarchy-menu-snippets.jsonc"), "utf8")
   )
+  const bind = fs.readFileSync(path.join(__dirname, "../../contrib/bindings-snippets.lua"), "utf8")
   assert.equal(Install.TOGGLE_COMMAND, menu["trigger.snippets"].action)
   assert.equal(Install.BIND_LINE, bind.trim())
 })

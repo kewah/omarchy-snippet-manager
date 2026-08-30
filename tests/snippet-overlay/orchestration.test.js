@@ -10,23 +10,21 @@ const TIMESTAMP = "2026-08-29T12:00:00.000Z"
 function validCatalog() {
   return {
     schemaVersion: 1,
-    snippets: [{
-      id: ID,
-      title: "Support email",
-      keywords: ["support"],
-      content: "support@example.com",
-      createdAt: TIMESTAMP,
-      updatedAt: TIMESTAMP
-    }]
+    snippets: [
+      {
+        id: ID,
+        title: "Support email",
+        keywords: ["support"],
+        content: "support@example.com",
+        createdAt: TIMESTAMP,
+        updatedAt: TIMESTAMP,
+      },
+    ],
   }
 }
 
 test("storeReadEvent parses successful stdout through SnippetCatalog", () => {
-  const event = OverlayModel.storeReadEvent(
-    0,
-    JSON.stringify(validCatalog()),
-    SnippetCatalog
-  )
+  const event = OverlayModel.storeReadEvent(0, JSON.stringify(validCatalog()), SnippetCatalog)
 
   assert.equal(event.type, "LOAD_SUCCEEDED")
   assert.deepEqual(event.catalog, validCatalog())
@@ -50,7 +48,7 @@ test("storeReadEvent maps store statuses without accepting stderr text", () => {
     [4, "UNSUPPORTED_SCHEMA"],
     [5, "INVALID_CATALOG"],
     [6, "IO_ERROR"],
-    [127, "IO_ERROR"]
+    [127, "IO_ERROR"],
   ])
 
   for (const [status, code] of expected) {
@@ -62,10 +60,7 @@ test("storeReadEvent maps store statuses without accepting stderr text", () => {
 })
 
 test("processCommand builds a fixed read argv without catalog content", () => {
-  const command = OverlayModel.processCommand(
-    { type: "READ_STORE" },
-    "/plugin/bin/snippet-store"
-  )
+  const command = OverlayModel.processCommand({ type: "READ_STORE" }, "/plugin/bin/snippet-store")
 
   assert.deepEqual(command, ["/plugin/bin/snippet-store", "read"])
   assert.equal(OverlayModel.processCommand({ type: "DISMISS" }, "/store"), null)
@@ -73,51 +68,95 @@ test("processCommand builds a fixed read argv without catalog content", () => {
 })
 
 test("createIdEvent accepts only a kernel UUID v4 and canonical timestamp", () => {
-  assert.deepEqual(
-    OverlayModel.createIdEvent(0, ID + "\n", TIMESTAMP, 11),
-    { type: "CREATE_ID_GENERATED", id: ID, now: TIMESTAMP, operationId: 11 }
-  )
-  assert.deepEqual(OverlayModel.createIdEvent(1, ID, TIMESTAMP, 11), { type: "CREATE_ID_FAILED", operationId: 11 })
-  assert.deepEqual(OverlayModel.createIdEvent(0, "not-a-uuid", TIMESTAMP, 11), { type: "CREATE_ID_FAILED", operationId: 11 })
-  assert.deepEqual(OverlayModel.createIdEvent(0, ID, "not-a-time", 11), { type: "CREATE_ID_FAILED", operationId: 11 })
+  assert.deepEqual(OverlayModel.createIdEvent(0, ID + "\n", TIMESTAMP, 11), {
+    type: "CREATE_ID_GENERATED",
+    id: ID,
+    now: TIMESTAMP,
+    operationId: 11,
+  })
+  assert.deepEqual(OverlayModel.createIdEvent(1, ID, TIMESTAMP, 11), {
+    type: "CREATE_ID_FAILED",
+    operationId: 11,
+  })
+  assert.deepEqual(OverlayModel.createIdEvent(0, "not-a-uuid", TIMESTAMP, 11), {
+    type: "CREATE_ID_FAILED",
+    operationId: 11,
+  })
+  assert.deepEqual(OverlayModel.createIdEvent(0, ID, "not-a-time", 11), {
+    type: "CREATE_ID_FAILED",
+    operationId: 11,
+  })
 })
 
 test("reconcileReadEvent preserves operation identity without leaking output", () => {
-  const succeeded = OverlayModel.reconcileReadEvent(0, JSON.stringify(validCatalog()), 91, SnippetCatalog)
+  const succeeded = OverlayModel.reconcileReadEvent(
+    0,
+    JSON.stringify(validCatalog()),
+    91,
+    SnippetCatalog
+  )
   const failed = OverlayModel.reconcileReadEvent(6, "private output", 91, SnippetCatalog)
 
   assert.equal(succeeded.type, "RECONCILE_SUCCEEDED")
   assert.equal(succeeded.operationId, 91)
   assert.deepEqual(succeeded.catalog, validCatalog())
-  assert.deepEqual(failed, { type: "RECONCILE_FAILED", operationId: 91, code: "IO_ERROR" })
+  assert.deepEqual(failed, {
+    type: "RECONCILE_FAILED",
+    operationId: 91,
+    code: "IO_ERROR",
+  })
 })
 
 test("storeWriteEvent exposes only success or a fixed write failure", () => {
-  assert.deepEqual(OverlayModel.storeWriteEvent(0, 12), { type: "WRITE_SUCCEEDED", operationId: 12 })
-  assert.deepEqual(OverlayModel.storeWriteEvent(3, 12, "private stderr"), { type: "WRITE_FAILED", operationId: 12 })
-  assert.deepEqual(OverlayModel.storeWriteEvent(6, 12, "private stderr"), { type: "WRITE_FAILED", operationId: 12 })
+  assert.deepEqual(OverlayModel.storeWriteEvent(0, 12), {
+    type: "WRITE_SUCCEEDED",
+    operationId: 12,
+  })
+  assert.deepEqual(OverlayModel.storeWriteEvent(3, 12, "private stderr"), {
+    type: "WRITE_FAILED",
+    operationId: 12,
+  })
+  assert.deepEqual(OverlayModel.storeWriteEvent(6, 12, "private stderr"), {
+    type: "WRITE_FAILED",
+    operationId: 12,
+  })
 })
 
 test("SELECT_INDEX changes selection by stable result ID and bounds input", () => {
-  const records = [validCatalog().snippets[0], {
-    ...validCatalog().snippets[0],
-    id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
-    title: "Second"
-  }]
+  const records = [
+    validCatalog().snippets[0],
+    {
+      ...validCatalog().snippets[0],
+      id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+      title: "Second",
+    },
+  ]
   const loading = OverlayModel.openedState()
-  const state = OverlayModel.transition(loading, {
-    type: "LOAD_SUCCEEDED",
-    catalog: { schemaVersion: 1, snippets: records }
-  }, SnippetCatalog).state
+  const state = OverlayModel.transition(
+    loading,
+    {
+      type: "LOAD_SUCCEEDED",
+      catalog: { schemaVersion: 1, snippets: records },
+    },
+    SnippetCatalog
+  ).state
 
-  const selected = OverlayModel.transition(state, {
-    type: "SELECT_INDEX",
-    index: 1
-  }, SnippetCatalog)
-  const outOfRange = OverlayModel.transition(state, {
-    type: "SELECT_INDEX",
-    index: 99
-  }, SnippetCatalog)
+  const selected = OverlayModel.transition(
+    state,
+    {
+      type: "SELECT_INDEX",
+      index: 1,
+    },
+    SnippetCatalog
+  )
+  const outOfRange = OverlayModel.transition(
+    state,
+    {
+      type: "SELECT_INDEX",
+      index: 99,
+    },
+    SnippetCatalog
+  )
 
   assert.equal(selected.state.selectedId, state.results[1].id)
   assert.equal(outOfRange.state.selectedId, state.selectedId)
