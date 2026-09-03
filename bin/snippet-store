@@ -112,6 +112,14 @@ validate_file() {
       and (.createdAt | canonical_timestamp)
       and ((.updatedAt | type) == "string")
       and (.updatedAt | canonical_timestamp)
+      and (
+        (has("lastUsedAt") | not)
+        or .lastUsedAt == null
+        or (
+          ((.lastUsedAt | type) == "string")
+          and (.lastUsedAt | canonical_timestamp)
+        )
+      )
     )
     and (([.snippets[].id | ascii_downcase] | length) == ([.snippets[].id | ascii_downcase] | unique | length))
   ' "$path" >/dev/null 2>&1; then

@@ -66,9 +66,12 @@ test("OPEN enters loading and requests a storage read without mutating prior sta
   assert.deepEqual(result.effects, [{ type: "READ_STORE" }])
 })
 
-test("LOAD_SUCCEEDED enters search with catalog-ranked results and first selection", () => {
+test("LOAD_SUCCEEDED enters search with last-used then catalog order", () => {
   const state = transition(OverlayModel.initialState(), { type: "OPEN" }).state
-  const source = catalog([snippet(2, { title: "Zulu" }), snippet(1, { title: "Alpha" })])
+  const source = catalog([
+    snippet(2, { title: "Zulu" }),
+    snippet(1, { title: "Alpha", lastUsedAt: "2026-08-29T13:00:00.000Z" }),
+  ])
 
   const result = transition(state, { type: "LOAD_SUCCEEDED", catalog: source })
 
@@ -219,22 +222,38 @@ test("Escape clears a query before it closes and dismisses the overlay", () => {
   assert.deepEqual(closed.effects, [{ type: "DISMISS" }])
 })
 
-test("transfer requests close before dispatching detached exact content", () => {
+test("transfer requests persist lastUsedAt then dismiss and dispatch detached content", () => {
+  const usedAt = "2026-08-29T16:00:00.000Z"
   const state = loaded([snippet(1, { content: "Exact 👋\r\nmultiline\n" })])
 
-  const pasted = transition(state, { type: "REQUEST_TRANSFER", kind: "PASTE" })
-  const copied = transition(state, { type: "REQUEST_TRANSFER", kind: "COPY" })
+  const pasted = transition(state, { type: "REQUEST_TRANSFER", kind: "PASTE", now: usedAt })
+  const copied = transition(state, { type: "REQUEST_TRANSFER", kind: "COPY", now: usedAt })
 
   for (const result of [pasted, copied]) {
     assert.deepEqual(result.state, OverlayModel.initialState())
-    assert.equal(result.effects[0].type, "DISMISS")
-    assert.equal(result.effects[1].type, "DISPATCH_TRANSFER")
-    assert.deepEqual(Object.keys(result.effects[1].payload.snippet), ["id", "content"])
-    assert.equal(result.effects[1].payload.snippet.content, "Exact 👋\r\nmultiline\n")
-    assert.notEqual(result.effects[1].payload.snippet, state.results[0])
+    assert.equal(result.effects[0].type, "WRITE_STORE")
+    const written = JSON.parse(result.effects[0].payload)
+    assert.equal(written.snippets[0].lastUsedAt, usedAt)
+    assert.equal(written.snippets[0].updatedAt, CREATED_AT)
+    assert.equal(written.snippets[0].content, "Exact 👋\r\nmultiline\n")
+    assert.equal(result.effects[1].type, "DISMISS")
+    assert.equal(result.effects[2].type, "DISPATCH_TRANSFER")
+    assert.deepEqual(Object.keys(result.effects[2].payload.snippet), ["id", "content"])
+    assert.equal(result.effects[2].payload.snippet.content, "Exact 👋\r\nmultiline\n")
+    assert.notEqual(result.effects[2].payload.snippet, state.results[0])
   }
-  assert.equal(pasted.effects[1].payload.kind, "PASTE")
-  assert.equal(copied.effects[1].payload.kind, "COPY")
+  assert.equal(pasted.effects[2].payload.kind, "PASTE")
+  assert.equal(copied.effects[2].payload.kind, "COPY")
+})
+
+test("transfer still dispatches when lastUsedAt cannot be recorded", () => {
+  const state = loaded([snippet(1)])
+
+  const result = transition(state, { type: "REQUEST_TRANSFER", kind: "PASTE", now: "not-a-time" })
+
+  assert.deepEqual(result.state, OverlayModel.initialState())
+  assert.equal(result.effects[0].type, "DISMISS")
+  assert.equal(result.effects[1].type, "DISPATCH_TRANSFER")
 })
 
 test("transfer requests with no selection or invalid kinds are no-ops", () => {

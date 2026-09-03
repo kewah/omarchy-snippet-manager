@@ -318,7 +318,7 @@ Item {
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
       var kind = (event.modifiers & Qt.ControlModifier) ? "COPY" : "PASTE"
-      root.applyEvent({ type: "REQUEST_TRANSFER", kind: kind })
+      root.applyEvent({ type: "REQUEST_TRANSFER", kind: kind, now: new Date().toISOString() })
       event.accepted = true
     } else if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
         && event.text && event.text.length === 1
@@ -498,7 +498,7 @@ Item {
         }
         onRowActivated: function(index) {
           root.applyEvent({ type: "SELECT_INDEX", index: index })
-          root.applyEvent({ type: "REQUEST_TRANSFER", kind: "PASTE" })
+          root.applyEvent({ type: "REQUEST_TRANSFER", kind: "PASTE", now: new Date().toISOString() })
         }
         onCreateRequested: {
           root.applyEvent({ type: "OPEN_CREATE" })
