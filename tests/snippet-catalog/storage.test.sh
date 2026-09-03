@@ -159,6 +159,26 @@ assert_equal "5" "$old_year_status" "out-of-range year exit status"
 assert_equal "$before_invalid" "$(sha256sum "$primary" | awk '{print $1}')" "invalid timestamp must not alter primary"
 pass "semantically invalid timestamps are rejected"
 
+used=$(printf '%s\n' "$second" | jq '.snippets[0].lastUsedAt = "2026-08-28T16:00:00.000Z"')
+printf '%s\n' "$used" | run_store write
+assert_equal "$used" "$(run_store read)" "optional lastUsedAt should persist"
+nulled_used=$(printf '%s\n' "$second" | jq '.snippets[0].lastUsedAt = null')
+printf '%s\n' "$nulled_used" | run_store write
+assert_equal "$nulled_used" "$(run_store read)" "null lastUsedAt should persist as unused"
+pass "optional lastUsedAt is accepted"
+
+invalid_used=$(printf '%s\n' "$second" | jq '.snippets[0].lastUsedAt = "2026-99-99T12:00:00.000Z"')
+before_invalid_used=$(sha256sum "$primary" | awk '{print $1}')
+set +e
+invalid_used_error=$(printf '%s\n' "$invalid_used" | run_store write 2>&1)
+invalid_used_status=$?
+set -e
+assert_equal "5" "$invalid_used_status" "invalid lastUsedAt exit status"
+assert_equal "Invalid snippet catalog" "$invalid_used_error" "invalid lastUsedAt error"
+assert_equal "$before_invalid_used" "$(sha256sum "$primary" | awk '{print $1}')" "invalid lastUsedAt must not alter primary"
+printf '%s\n' "$second" | run_store write
+pass "invalid lastUsedAt is rejected"
+
 bom_catalog=$(printf '%s\n' "$first" | jq '.snippets[0].content = "﻿"')
 set +e
 bom_error=$(printf '%s\n' "$bom_catalog" | run_store write 2>&1)

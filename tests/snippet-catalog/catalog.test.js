@@ -64,6 +64,39 @@ test("parseCatalog ignores unknown document and record fields", () => {
   ])
 })
 
+test("parseCatalog preserves optional lastUsedAt and omits missing or null values", () => {
+  const usedAt = "2026-08-28T15:00:00.000Z"
+  const withStamp = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ lastUsedAt: usedAt })])
+  )
+  const missing = SnippetCatalog.parseCatalog(validDocument([validRecord()]))
+  const nulled = SnippetCatalog.parseCatalog(validDocument([validRecord({ lastUsedAt: null })]))
+
+  assert.equal(withStamp.ok, true)
+  assert.equal(withStamp.value.snippets[0].lastUsedAt, usedAt)
+  assert.deepEqual(Object.keys(withStamp.value.snippets[0]), [
+    "id",
+    "title",
+    "content",
+    "createdAt",
+    "updatedAt",
+    "lastUsedAt",
+  ])
+  assert.equal(missing.ok, true)
+  assert.equal(Object.prototype.hasOwnProperty.call(missing.value.snippets[0], "lastUsedAt"), false)
+  assert.equal(nulled.ok, true)
+  assert.equal(Object.prototype.hasOwnProperty.call(nulled.value.snippets[0], "lastUsedAt"), false)
+})
+
+test("parseCatalog rejects an invalid lastUsedAt without treating it as unused", () => {
+  const result = SnippetCatalog.parseCatalog(
+    validDocument([validRecord({ lastUsedAt: "2026-99-99T12:00:00.000Z" })])
+  )
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, "INVALID_CATALOG")
+})
+
 test("parseCatalog reports malformed JSON without echoing input", () => {
   const secretLikeContent = "{not-json-password-value"
 
@@ -425,6 +458,55 @@ test("updateSnippet treats undefined fields as omitted", () => {
   assert.equal(result.ok, true)
   assert.equal(result.value.snippets[0].title, "New title")
   assert.equal(result.value.snippets[0].content, "support@example.com")
+})
+
+test("updateSnippet preserves lastUsedAt and does not treat it as an editable field", () => {
+  const usedAt = "2026-08-28T15:00:00.000Z"
+  const catalog = { schemaVersion: 1, snippets: [validRecord({ lastUsedAt: usedAt })] }
+
+  const result = SnippetCatalog.updateSnippet(
+    catalog,
+    ID_ONE,
+    { title: "Updated support" },
+    "2026-08-28T14:00:00.000Z"
+  )
+
+  assert.equal(result.ok, true)
+  assert.equal(result.value.snippets[0].title, "Updated support")
+  assert.equal(result.value.snippets[0].lastUsedAt, usedAt)
+  assert.equal(result.value.snippets[0].updatedAt, "2026-08-28T14:00:00.000Z")
+})
+
+test("markSnippetUsed sets lastUsedAt without changing content or updatedAt", () => {
+  const catalog = { schemaVersion: 1, snippets: [validRecord()] }
+  const original = structuredClone(catalog)
+  const usedAt = "2026-08-28T16:00:00.000Z"
+
+  const result = SnippetCatalog.markSnippetUsed(catalog, ID_ONE.toUpperCase(), usedAt)
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(catalog, original)
+  assert.deepEqual(result.value.snippets[0], validRecord({ lastUsedAt: usedAt }))
+  assert.equal(result.value.snippets[0].updatedAt, CREATED_AT)
+  assert.equal(result.value.snippets[0].content, "support@example.com")
+})
+
+test("markSnippetUsed rejects missing snippets and invalid timestamps", () => {
+  const catalog = { schemaVersion: 1, snippets: [validRecord()] }
+
+  const missing = SnippetCatalog.markSnippetUsed(
+    catalog,
+    "123e4567-e89b-42d3-a456-426614174000",
+    "2026-08-28T16:00:00.000Z"
+  )
+  const invalidTime = SnippetCatalog.markSnippetUsed(catalog, ID_ONE, "not-a-date")
+
+  assert.deepEqual(missing, {
+    ok: false,
+    error: { code: "NOT_FOUND", message: "Snippet not found" },
+  })
+  assert.equal(invalidTime.ok, false)
+  assert.equal(invalidTime.error.code, "VALIDATION_ERROR")
 })
 
 test("updateSnippet leaves updatedAt unchanged when editable values do not change", () => {

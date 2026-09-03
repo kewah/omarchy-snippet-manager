@@ -76,61 +76,11 @@ test("searchSnippets is case-insensitive and tokenizes runs of whitespace", () =
   )
 })
 
-test("searchSnippets ranks title matches above content", () => {
+test("searchSnippets orders used snippets by lastUsedAt descending", () => {
   const source = catalog([
-    record(1, { title: "Alpha", content: "target" }),
-    record(2, { title: "Target title" }),
-  ])
-
-  const result = SnippetCatalog.searchSnippets(source, "target")
-
-  assert.equal(result.ok, true)
-  assert.deepEqual(
-    result.value.map((snippet) => snippet.id),
-    [record(2).id, record(1).id]
-  )
-})
-
-test("searchSnippets counts only the highest-weight field for each token", () => {
-  const source = catalog([
-    record(1, {
-      title: "Target zebra",
-      content: "target",
-    }),
-    record(2, { title: "Target alpha" }),
-  ])
-
-  const result = SnippetCatalog.searchSnippets(source, "target")
-
-  assert.equal(result.ok, true)
-  assert.deepEqual(
-    result.value.map((snippet) => snippet.id),
-    [record(2).id, record(1).id]
-  )
-})
-
-test("searchSnippets breaks score ties by case-insensitive title then stable ID", () => {
-  const source = catalog([
-    record(3, { title: "beta target" }),
-    record(2, { title: "Alpha target" }),
-    record(1, { title: "alpha target" }),
-  ])
-
-  const result = SnippetCatalog.searchSnippets(source, "target")
-
-  assert.equal(result.ok, true)
-  assert.deepEqual(
-    result.value.map((snippet) => snippet.id),
-    [record(1).id, record(2).id, record(3).id]
-  )
-})
-
-test("searchSnippets tie-breaks equal titles by exact stored ID", () => {
-  const lowercaseId = "00000000-0000-4000-8000-00000000000a"
-  const uppercaseId = "00000000-0000-4000-8000-00000000000B"
-  const source = catalog([
-    record(1, { id: lowercaseId, title: "Same" }),
-    record(2, { id: uppercaseId, title: "Same" }),
+    record(1, { lastUsedAt: "2026-08-28T12:00:00.000Z" }),
+    record(2, { lastUsedAt: "2026-08-28T14:00:00.000Z" }),
+    record(3, { lastUsedAt: "2026-08-28T13:00:00.000Z" }),
   ])
 
   const result = SnippetCatalog.searchSnippets(source, "")
@@ -138,11 +88,61 @@ test("searchSnippets tie-breaks equal titles by exact stored ID", () => {
   assert.equal(result.ok, true)
   assert.deepEqual(
     result.value.map((snippet) => snippet.id),
-    [uppercaseId, lowercaseId]
+    [record(2).id, record(3).id, record(1).id]
   )
 })
 
-test("searchSnippets returns an empty query sorted by title and stable ID", () => {
+test("searchSnippets keeps unused snippets after used ones in catalog order", () => {
+  const source = catalog([
+    record(1),
+    record(2, { lastUsedAt: "2026-08-28T12:00:00.000Z" }),
+    record(3),
+    record(4, { lastUsedAt: "2026-08-28T13:00:00.000Z" }),
+  ])
+
+  const result = SnippetCatalog.searchSnippets(source, "")
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(
+    result.value.map((snippet) => snippet.id),
+    [record(4).id, record(2).id, record(1).id, record(3).id]
+  )
+})
+
+test("searchSnippets breaks lastUsedAt ties with catalog order", () => {
+  const usedAt = "2026-08-28T12:00:00.000Z"
+  const source = catalog([
+    record(3, { lastUsedAt: usedAt }),
+    record(1, { lastUsedAt: usedAt }),
+    record(2, { lastUsedAt: usedAt }),
+  ])
+
+  const result = SnippetCatalog.searchSnippets(source, "")
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(
+    result.value.map((snippet) => snippet.id),
+    [record(3).id, record(1).id, record(2).id]
+  )
+})
+
+test("searchSnippets applies last-used order to filtered matches", () => {
+  const source = catalog([
+    record(1, { title: "Alpha", content: "target", lastUsedAt: "2026-08-28T12:00:00.000Z" }),
+    record(2, { title: "Target title" }),
+    record(3, { title: "Other" }),
+  ])
+
+  const result = SnippetCatalog.searchSnippets(source, "target")
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(
+    result.value.map((snippet) => snippet.id),
+    [record(1).id, record(2).id]
+  )
+})
+
+test("searchSnippets returns an empty query in catalog order when nothing has been used", () => {
   const source = catalog([
     record(3, { title: "Zulu" }),
     record(2, { title: "alpha" }),
@@ -154,7 +154,7 @@ test("searchSnippets returns an empty query sorted by title and stable ID", () =
   assert.equal(result.ok, true)
   assert.deepEqual(
     result.value.map((snippet) => snippet.id),
-    [record(1).id, record(2).id, record(3).id]
+    [record(3).id, record(2).id, record(1).id]
   )
 })
 
