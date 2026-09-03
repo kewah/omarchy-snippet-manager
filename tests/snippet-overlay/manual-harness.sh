@@ -62,7 +62,7 @@ ShellRoot {
 QML
 
 printf '%s\n' \
-  "Interactive snippet overlay (disposable catalog; transfer actions use your real clipboard and keyboard)." \
+  "Interactive snippet overlay (disposable catalog; Enter pastes via sensitive clipboard, Ctrl+Enter copies)." \
   "Escape closes without transfer. Enter pastes; Ctrl+Enter copies. Run this script again to reopen." \
   "Ctrl+C in this terminal stops Quickshell." \
   "Catalog: $isolated_data/omarchy-snippets/snippets.json"
