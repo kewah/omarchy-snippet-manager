@@ -78,15 +78,17 @@ assert_equal "1" "$snippet_keys" "re-run must not duplicate trigger.snippets"
 
 pass "re-run is a no-op"
 
-[[ -f $PACKAGED ]] || fail "packaged Omarchy menu is missing"
-packaged_before=$(sha256sum "$PACKAGED")
-if "$INSTALLER" --menu-file "$PACKAGED" --bind-file "$BIND_FILE"; then
-  fail "installer must refuse a packaged Omarchy path"
+if [[ -f $PACKAGED ]]; then
+  packaged_before=$(sha256sum "$PACKAGED")
+  if "$INSTALLER" --menu-file "$PACKAGED" --bind-file "$BIND_FILE"; then
+    fail "installer must refuse a packaged Omarchy path"
+  fi
+  packaged_after=$(sha256sum "$PACKAGED")
+  assert_equal "$packaged_before" "$packaged_after" "installer must not modify packaged Omarchy files"
+  pass "refuses packaged Omarchy paths"
+else
+  pass "skips packaged Omarchy path check when host has no packaged menu"
 fi
-packaged_after=$(sha256sum "$PACKAGED")
-assert_equal "$packaged_before" "$packaged_after" "installer must not modify packaged Omarchy files"
-
-pass "refuses packaged Omarchy paths"
 
 real_menu="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc"
 if [[ -f $real_menu ]]; then

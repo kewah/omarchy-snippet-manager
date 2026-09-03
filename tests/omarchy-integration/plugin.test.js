@@ -57,12 +57,19 @@ test("manifest.json declares the locked overlay plugin contract", () => {
   assert.equal(fs.existsSync(path.join(ROOT, "Snippets.qml")), true)
 })
 
-test("omarchy plugin validate accepts the plugin tree without node_modules", () => {
-  const result = spawnSync("node", [path.join(ROOT, "scripts/validate-plugin.js")], {
-    encoding: "utf8",
-  })
-  assert.equal(result.status, 0, result.stderr || result.stdout)
-})
+const hasOmarchyCli =
+  spawnSync("bash", ["-c", "command -v omarchy >/dev/null"], { encoding: "utf8" }).status === 0
+
+test(
+  "omarchy plugin validate accepts the plugin tree without node_modules",
+  { skip: hasOmarchyCli ? false : "omarchy CLI is not installed" },
+  () => {
+    const result = spawnSync("node", [path.join(ROOT, "scripts/validate-plugin.js")], {
+      encoding: "utf8",
+    })
+    assert.equal(result.status, 0, result.stderr || result.stdout)
+  }
+)
 
 test("plugin tree contains no file or directory symlinks", () => {
   assert.deepEqual(fileSymlinks(ROOT), [])
