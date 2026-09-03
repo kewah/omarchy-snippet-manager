@@ -21,13 +21,14 @@ input=$(cat; printf x) || true
 input=${input%x}
 [[ -n $input ]] || die "$EXIT_USAGE" "Transfer request was invalid"
 
-command -v wl-copy >/dev/null 2>&1 || die "$EXIT_IO" "Unable to transfer snippet"
-
-printf '%s' "$input" | wl-copy --type text/plain || die "$EXIT_IO" "Unable to transfer snippet"
-
-if [[ $verb == "paste" ]]; then
+if [[ $verb == "copy" ]]; then
+  command -v wl-copy >/dev/null 2>&1 || die "$EXIT_IO" "Unable to transfer snippet"
+  printf '%s' "$input" | wl-copy --type text/plain || die "$EXIT_IO" "Unable to transfer snippet"
+else
+  command -v wl-copy >/dev/null 2>&1 || die "$EXIT_IO" "Unable to transfer snippet"
   command -v sleep >/dev/null 2>&1 || die "$EXIT_IO" "Unable to transfer snippet"
   command -v wtype >/dev/null 2>&1 || die "$EXIT_IO" "Unable to transfer snippet"
+  printf '%s' "$input" | wl-copy --type text/plain --sensitive || die "$EXIT_IO" "Unable to transfer snippet"
   sleep 0.15 || die "$EXIT_IO" "Unable to transfer snippet"
   wtype -M shift -k Insert -m shift || die "$EXIT_IO" "Unable to transfer snippet"
 fi
